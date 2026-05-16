@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <record id="json2_endpoint_view_form" model="ir.ui.view">
+        <field name="name">json2.endpoint.form</field>
+        <field name="model">json2.endpoint</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_button_box" name="button_box" />
+                    <widget
+                        name="web_ribbon"
+                        title="Archived"
+                        bg_color="text-bg-danger"
+                        invisible="active"
+                    />
+                    <group>
+                        <group>
+                            <field name="name" />
+                            <field name="domain_name" />
+                            <field name="active" invisible="1" />
+                        </group>
+                        <group>
+                            <field name="model_id" />
+                            <field name="model_name" invisible="1" />
+                            <field name="method" />
+                        </group>
+                    </group>
+                    <group>
+                        <field name="description" />
+                        <field name="allowed_fields" />
+                        <field name="default_domain" />
+                    </group>
+                    <group>
+                        <field name="group_ids" widget="many2many_tags" />
+                    </group>
+                    <notebook>
+                        <page string="Parameters" name="parameters">
+                            <field name="param_ids">
+                                <list editable="bottom">
+                                    <field name="sequence" widget="handle" />
+                                    <field name="name" />
+                                    <field name="description" />
+                                    <field name="param_type" />
+                                    <field name="required" />
+                                    <field name="default_value" />
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="json2_endpoint_view_list" model="ir.ui.view">
+        <field name="name">json2.endpoint.list</field>
+        <field name="model">json2.endpoint</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="domain_name" />
+                <field name="name" />
+                <field name="model_id" />
+                <field name="method" />
+            </list>
+        </field>
+    </record>
+
+    <record id="json2_endpoint_view_search" model="ir.ui.view">
+        <field name="name">json2.endpoint.search</field>
+        <field name="model">json2.endpoint</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name" />
+                <field name="domain_name" />
+                <field name="model_id" />
+                <field name="method" />
+                <filter
+                    name="archived"
+                    string="Archived"
+                    domain="[('active', '=', False)]"
+                />
+                <separator />
+                <group>
+                    <filter
+                        name="group_by_domain"
+                        string="Domain"
+                        context="{'group_by': 'domain_name'}"
+                    />
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="json2_endpoint_action" model="ir.actions.act_window">
+        <field name="name">JSON2 Endpoints</field>
+        <field name="res_model">json2.endpoint</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_group_by_domain': 1}</field>
+    </record>
+</odoo>

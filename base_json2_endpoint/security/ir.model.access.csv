@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_json2_endpoint_manager,json2.endpoint.manager,model_json2_endpoint,group_json2_endpoint_manager,1,1,1,1
+access_json2_endpoint_param_manager,json2.endpoint.param.manager,model_json2_endpoint_param,group_json2_endpoint_manager,1,1,1,1
+access_json2_endpoint_user,json2.endpoint.user,model_json2_endpoint,group_json2_endpoint_user,1,0,0,0
+access_json2_endpoint_param_user,json2.endpoint.param.user,model_json2_endpoint_param,group_json2_endpoint_user,1,0,0,0

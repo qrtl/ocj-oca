@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <record id="demo_endpoint_get_partners" model="json2.endpoint">
+        <field name="name">get_partners</field>
+        <field name="domain_name">contacts</field>
+        <field name="description">Return partner records matching the given domain.</field>
+        <field name="model_id" ref="base.model_res_partner" />
+        <field name="method">search_read</field>
+        <field name="allowed_fields">name,email,phone,city,country_id</field>
+        <field name="default_domain">[["active", "=", true]]</field>
+    </record>
+    <record id="demo_param_get_partners_domain" model="json2.endpoint.param">
+        <field name="endpoint_id" ref="demo_endpoint_get_partners" />
+        <field name="name">domain</field>
+        <field name="description">Search domain to filter partners.</field>
+        <field name="param_type">list</field>
+        <field name="required" eval="False" />
+        <field name="default_value">[]</field>
+        <field name="sequence">10</field>
+    </record>
+    <record id="demo_param_get_partners_limit" model="json2.endpoint.param">
+        <field name="endpoint_id" ref="demo_endpoint_get_partners" />
+        <field name="name">limit</field>
+        <field name="description">Maximum number of records to return.</field>
+        <field name="param_type">integer</field>
+        <field name="required" eval="False" />
+        <field name="default_value">80</field>
+        <field name="sequence">20</field>
+    </record>
+    <record id="demo_param_get_partners_fields" model="json2.endpoint.param">
+        <field name="endpoint_id" ref="demo_endpoint_get_partners" />
+        <field name="name">fields</field>
+        <field name="description">List of field names to return.</field>
+        <field name="param_type">list</field>
+        <field name="required" eval="False" />
+        <field name="sequence">30</field>
+    </record>
+
+    <record id="demo_endpoint_get_companies" model="json2.endpoint">
+        <field name="name">get_companies</field>
+        <field name="domain_name">contacts</field>
+        <field name="description">Return company partners only.</field>
+        <field name="model_id" ref="base.model_res_partner" />
+        <field name="method">search_read</field>
+        <field name="allowed_fields">name,email,phone,website,city,country_id</field>
+        <field
+            name="default_domain"
+        >[["is_company", "=", true], ["active", "=", true]]</field>
+    </record>
+    <record id="demo_param_get_companies_domain" model="json2.endpoint.param">
+        <field name="endpoint_id" ref="demo_endpoint_get_companies" />
+        <field name="name">domain</field>
+        <field name="description">Additional domain to filter companies.</field>
+        <field name="param_type">list</field>
+        <field name="required" eval="False" />
+        <field name="default_value">[]</field>
+        <field name="sequence">10</field>
+    </record>
+
+    <record id="demo_endpoint_get_countries" model="json2.endpoint">
+        <field name="name">get_countries</field>
+        <field name="domain_name">reference</field>
+        <field name="description">Return available countries.</field>
+        <field name="model_id" ref="base.model_res_country" />
+        <field name="method">search_read</field>
+        <field name="allowed_fields">name,code,phone_code</field>
+        <field name="default_domain">[]</field>
+    </record>
+    <record id="demo_param_get_countries_domain" model="json2.endpoint.param">
+        <field name="endpoint_id" ref="demo_endpoint_get_countries" />
+        <field name="name">domain</field>
+        <field name="description">Search domain to filter countries.</field>
+        <field name="param_type">list</field>
+        <field name="required" eval="False" />
+        <field name="default_value">[]</field>
+        <field name="sequence">10</field>
+    </record>
+</odoo>

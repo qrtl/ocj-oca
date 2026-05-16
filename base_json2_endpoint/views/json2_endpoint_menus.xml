@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <menuitem
+        id="json2_endpoint_menu_root"
+        name="JSON2 Endpoints"
+        groups="group_json2_endpoint_manager"
+        web_icon="base_json2_endpoint,static/description/icon.png"
+    />
+    <menuitem
+        id="json2_endpoint_menu_config"
+        name="Configuration"
+        parent="json2_endpoint_menu_root"
+    />
+    <menuitem
+        id="json2_endpoint_menu_endpoints"
+        name="Endpoints"
+        parent="json2_endpoint_menu_config"
+        action="json2_endpoint_action"
+    />
+</odoo>
