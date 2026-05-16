@@ -2,7 +2,8 @@
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl).
 
 import json
-from odoo import _, api, fields, models
+
+from odoo import api, fields, models
 from odoo.exceptions import ValidationError
 
 
@@ -17,16 +18,14 @@ class Json2Endpoint(models.Model):
         required=True,
         help="Logical grouping for the API facade model (e.g. sales, inventory).",
     )
-    description = fields.Text(
-        help="Displayed in the API documentation endpoint."
-    )
+    description = fields.Text(help="Displayed in the API documentation endpoint.")
     model_id = fields.Many2one(
         "ir.model",
         required=True,
         ondelete="cascade",
         domain=[("transient", "=", False)],
     )
-    model_name = fields.Char(related="model_id.model", store=True)
+    model_name = fields.Char(string="Model Name", related="model_id.model", store=True)
     method = fields.Char(
         required=True,
         help="Public method name on the target model.",
@@ -52,20 +51,17 @@ class Json2Endpoint(models.Model):
         string="Parameters",
     )
 
-    _sql_constraints = [
-        (
-            "unique_domain_name",
-            "unique(domain_name, name)",
-            "Endpoint name must be unique within a domain.",
-        ),
-    ]
+    _unique_domain_name = models.Constraint(
+        "UNIQUE(domain_name, name)",
+        "Endpoint name must be unique within a domain.",
+    )
 
     @api.constrains("method")
     def _check_method(self):
         for rec in self:
             if rec.method.startswith("_"):
                 raise ValidationError(
-                    _("Private methods (starting with '_') cannot be exposed.")
+                    self.env._("Private methods (starting with '_') cannot be exposed.")
                 )
 
     @api.constrains("default_domain")
@@ -77,7 +73,7 @@ class Json2Endpoint(models.Model):
                     raise ValueError
             except (json.JSONDecodeError, ValueError):
                 raise ValidationError(
-                    _("Default domain must be a valid JSON list.")
+                    self.env._("Default domain must be a valid JSON list.")
                 ) from None
 
     @api.constrains("allowed_fields", "model_id")
@@ -92,8 +88,11 @@ class Json2Endpoint(models.Model):
             invalid = [f for f in field_names if f not in Model._fields]
             if invalid:
                 raise ValidationError(
-                    _("Invalid field(s) for %(model)s: %(fields)s")
-                    % {"model": rec.model_name, "fields": ", ".join(invalid)}
+                    self.env._(
+                        "Invalid field(s) for %(model)s: %(fields)s",
+                        model=rec.model_name,
+                        fields=", ".join(invalid),
+                    )
                 )
 
     def _get_allowed_field_list(self):
@@ -143,6 +142,8 @@ class Json2EndpointParam(models.Model):
                 json.loads(rec.default_value)
             except json.JSONDecodeError:
                 raise ValidationError(
-                    _("Default value must be valid JSON: %(value)s")
-                    % {"value": rec.default_value}
+                    self.env._(
+                        "Default value must be valid JSON: %(value)s",
+                        value=rec.default_value,
+                    )
                 ) from None

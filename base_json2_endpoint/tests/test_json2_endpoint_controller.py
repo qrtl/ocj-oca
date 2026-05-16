@@ -82,8 +82,7 @@ class TestJson2EndpointController(HttpCase):
         url = f"/json2/endpoint/doc{path}"
         return self.url_open(
             url,
-            data="{}",
-            headers=CT_JSON | self.bearer,
+            headers=self.bearer,
             allow_redirects=False,
         )
 
@@ -171,9 +170,7 @@ class TestJson2EndpointController(HttpCase):
         self.assertEqual(res.status_code, 200)
 
     def test_dispatch_default_domain_applied(self):
-        self.env["res.partner"].create(
-            {"name": "Test Individual", "is_company": False}
-        )
+        self.env["res.partner"].create({"name": "Test Individual", "is_company": False})
         res = self._call("contacts", "get_partners")
         self.assertEqual(res.status_code, 200)
         data = res.json()
@@ -183,7 +180,7 @@ class TestJson2EndpointController(HttpCase):
 
     def test_dispatch_group_access_denied(self):
         group = self.env["res.groups"].create({"name": "Secret API Group"})
-        endpoint = self.env["json2.endpoint"].create(
+        self.env["json2.endpoint"].create(
             {
                 "name": "restricted",
                 "domain_name": "test",
@@ -236,7 +233,7 @@ class TestJson2EndpointController(HttpCase):
         self.assertNotIn("secret", data)
 
     def test_filter_result_dict(self):
-        from odoo.addons.base_json2_endpoint.controllers.main import (
+        from ..controllers.main import (
             Json2EndpointController,
         )
 
@@ -246,7 +243,7 @@ class TestJson2EndpointController(HttpCase):
         self.assertEqual(filtered, {"name": "Test", "email": "a@b.c"})
 
     def test_filter_result_list(self):
-        from odoo.addons.base_json2_endpoint.controllers.main import (
+        from ..controllers.main import (
             Json2EndpointController,
         )
 
@@ -259,7 +256,7 @@ class TestJson2EndpointController(HttpCase):
         self.assertEqual(filtered, [{"name": "A"}, {"name": "B"}])
 
     def test_filter_result_passthrough(self):
-        from odoo.addons.base_json2_endpoint.controllers.main import (
+        from ..controllers.main import (
             Json2EndpointController,
         )
 

@@ -49,9 +49,7 @@ class Json2EndpointController(http.Controller):
         endpoints = self._get_accessible_endpoints()
         result = {}
         for ep in endpoints:
-            result.setdefault(ep.domain_name, []).append(
-                self._endpoint_to_doc(ep)
-            )
+            result.setdefault(ep.domain_name, []).append(self._endpoint_to_doc(ep))
         return result
 
     @http.route(
@@ -63,21 +61,17 @@ class Json2EndpointController(http.Controller):
         save_session=False,
     )
     def doc_domain(self, domain):
-        endpoints = self._get_accessible_endpoints(
-            [("domain_name", "=", domain)]
-        )
+        endpoints = self._get_accessible_endpoints([("domain_name", "=", domain)])
         if not endpoints:
             raise NotFound(f"No endpoints found for domain {domain!r}")
         return [self._endpoint_to_doc(ep) for ep in endpoints]
 
     def _get_accessible_endpoints(self, extra_domain=None):
         domain = extra_domain or []
-        all_endpoints = (
-            request.env["json2.endpoint"].sudo().search(domain)
-        )
+        all_endpoints = request.env["json2.endpoint"].sudo().search(domain)
         user = request.env.user
         return all_endpoints.filtered(
-            lambda ep: not ep.group_ids or (ep.group_ids & user.groups_id)
+            lambda ep: not ep.group_ids or (ep.group_ids & user.group_ids)
         )
 
     def _endpoint_to_doc(self, endpoint):
@@ -121,7 +115,7 @@ class Json2EndpointController(http.Controller):
     def _check_group_access(self, endpoint):
         if not endpoint.group_ids:
             return
-        if not (endpoint.group_ids & request.env.user.groups_id):
+        if not (endpoint.group_ids & request.env.user.group_ids):
             raise Forbidden("User does not belong to any allowed group")
 
     def _validate_params(self, endpoint, kwargs):
@@ -136,9 +130,7 @@ class Json2EndpointController(http.Controller):
                 )
             if value is not None:
                 expected_type = PARAM_TYPE_MAP.get(param_def.param_type)
-                if expected_type and not self._check_param_type(
-                    value, expected_type
-                ):
+                if expected_type and not self._check_param_type(value, expected_type):
                     raise UnprocessableEntity(
                         f"Parameter {param_def.name!r} must be of type "
                         f"{param_def.param_type}"
@@ -178,7 +170,5 @@ class Json2EndpointController(http.Controller):
                 for row in result
             ]
         if isinstance(result, dict):
-            return {
-                k: v for k, v in result.items() if k in allowed_fields
-            }
+            return {k: v for k, v in result.items() if k in allowed_fields}
         return result

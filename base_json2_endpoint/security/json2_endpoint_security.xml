@@ -3,35 +3,20 @@
     <record id="module_category_json2_endpoint" model="ir.module.category">
         <field name="name">JSON2 Endpoint</field>
     </record>
-    <record
-        id="res_groups_privilege_json2_endpoint"
-        model="res.groups.privilege"
-    >
+    <record id="res_groups_privilege_json2_endpoint" model="res.groups.privilege">
         <field name="name">JSON2 Endpoint</field>
         <field name="category_id" ref="module_category_json2_endpoint" />
     </record>
     <record id="group_json2_endpoint_user" model="res.groups">
         <field name="name">User</field>
         <field name="sequence">10</field>
-        <field
-            name="privilege_id"
-            ref="res_groups_privilege_json2_endpoint"
-        />
-        <field
-            name="implied_ids"
-            eval="[(4, ref('base.group_user'))]"
-        />
+        <field name="privilege_id" ref="res_groups_privilege_json2_endpoint" />
+        <field name="implied_ids" eval="[(4, ref('base.group_user'))]" />
     </record>
     <record id="group_json2_endpoint_manager" model="res.groups">
         <field name="name">Manager</field>
         <field name="sequence">20</field>
-        <field
-            name="privilege_id"
-            ref="res_groups_privilege_json2_endpoint"
-        />
-        <field
-            name="implied_ids"
-            eval="[(4, ref('group_json2_endpoint_user'))]"
-        />
+        <field name="privilege_id" ref="res_groups_privilege_json2_endpoint" />
+        <field name="implied_ids" eval="[(4, ref('group_json2_endpoint_user'))]" />
     </record>
 </odoo>

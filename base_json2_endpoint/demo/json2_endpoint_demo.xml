@@ -3,7 +3,9 @@
     <record id="demo_endpoint_get_partners" model="json2.endpoint">
         <field name="name">get_partners</field>
         <field name="domain_name">contacts</field>
-        <field name="description">Return partner records matching the given domain.</field>
+        <field
+            name="description"
+        >Return partner records matching the given domain.</field>
         <field name="model_id" ref="base.model_res_partner" />
         <field name="method">search_read</field>
         <field name="allowed_fields">name,email,phone,city,country_id</field>
