@@ -1,8 +1,6 @@
 # Copyright 2026 Quartile (https://www.quartile.co)
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl).
 
-from psycopg2 import IntegrityError
-
 from odoo.exceptions import ValidationError
 from odoo.tests.common import TransactionCase
 
@@ -52,7 +50,7 @@ class TestJson2Endpoint(TransactionCase):
         self.assertEqual(self.endpoint._get_allowed_field_list(), [])
 
     def test_unique_constraint(self):
-        with self.assertRaises(IntegrityError), self.cr.savepoint():
+        with self.assertRaises(ValidationError):
             self.env["json2.endpoint"].create(
                 {
                     "name": "get_partners",

@@ -51,10 +51,21 @@ class Json2Endpoint(models.Model):
         string="Parameters",
     )
 
-    _unique_domain_name = models.Constraint(
-        "UNIQUE(domain_name, name)",
-        "Endpoint name must be unique within a domain.",
-    )
+    @api.constrains("domain_name", "name")
+    def _check_unique_domain_name(self):
+        for rec in self:
+            duplicate = self.search(
+                [
+                    ("domain_name", "=", rec.domain_name),
+                    ("name", "=", rec.name),
+                    ("id", "!=", rec.id),
+                ],
+                limit=1,
+            )
+            if duplicate:
+                raise ValidationError(
+                    self.env._("Endpoint name must be unique within a domain.")
+                )
 
     @api.constrains("method")
     def _check_method(self):
