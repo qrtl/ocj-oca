@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Copyright 2026 Quartile (https://www.quartile.co)
+     License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl). -->
+<odoo>
+    <!-- get_partners -->
+    <record id="demo_endpoint_get_partners" model="endpoint.endpoint">
+        <field name="name">get_partners</field>
+        <field name="route">/json2/endpoint/contacts/get_partners</field>
+        <field name="route_group">contacts</field>
+        <field name="exec_mode">json2</field>
+        <field name="request_method">POST</field>
+        <field name="request_content_type">application/json</field>
+        <field name="auth_type">bearer</field>
+        <field
+            name="json2_description"
+        >Return partner records matching the given domain.</field>
+        <field name="json2_model_id" ref="base.model_res_partner" />
+        <field name="json2_method">search_read</field>
+        <field name="json2_allowed_fields">name,email,phone,city,country_id</field>
+        <field name="json2_default_domain">[["active", "=", true]]</field>
+    </record>
+    <record id="demo_param_get_partners_domain" model="endpoint.json2.param">
+        <field name="endpoint_id" ref="demo_endpoint_get_partners" />
+        <field name="name">domain</field>
+        <field name="param_type">list</field>
+        <field name="required" eval="False" />
+        <field name="default_value">[]</field>
+        <field name="sequence">10</field>
+    </record>
+    <record id="demo_param_get_partners_limit" model="endpoint.json2.param">
+        <field name="endpoint_id" ref="demo_endpoint_get_partners" />
+        <field name="name">limit</field>
+        <field name="param_type">integer</field>
+        <field name="required" eval="False" />
+        <field name="default_value">80</field>
+        <field name="sequence">20</field>
+    </record>
+    <record id="demo_param_get_partners_fields" model="endpoint.json2.param">
+        <field name="endpoint_id" ref="demo_endpoint_get_partners" />
+        <field name="name">fields</field>
+        <field name="param_type">list</field>
+        <field name="required" eval="False" />
+        <field name="sequence">30</field>
+    </record>
+
+    <!-- update_partner_name (code snippet example) -->
+    <record id="demo_endpoint_update_partner_name" model="endpoint.endpoint">
+        <field name="name">update_partner_name</field>
+        <field name="route">/json2/endpoint/contacts/update_partner_name</field>
+        <field name="route_group">contacts</field>
+        <field name="exec_mode">json2</field>
+        <field name="request_method">POST</field>
+        <field name="request_content_type">application/json</field>
+        <field name="auth_type">bearer</field>
+        <field
+            name="json2_description"
+        >Update a partner's name by ref (code snippet example).</field>
+        <field name="json2_model_id" ref="base.model_res_partner" />
+        <field name="json2_allowed_fields">ref,name</field>
+        <field name="json2_code_snippet">
+partner = Model.search([("ref", "=", params["ref"])], limit=1)
+if not partner:
+    raise exceptions.NotFound("Partner not found: " + params["ref"])
+partner.write({"name": params["new_name"]})
+result = {"ref": partner.ref, "name": partner.name}
+</field>
+    </record>
+    <record
+        id="demo_param_update_partner_ref"
+        model="endpoint.json2.param"
+    >
+        <field name="endpoint_id" ref="demo_endpoint_update_partner_name" />
+        <field name="name">ref</field>
+        <field name="param_type">string</field>
+        <field name="required" eval="True" />
+        <field name="sequence">10</field>
+    </record>
+    <record id="demo_param_update_partner_new_name" model="endpoint.json2.param">
+        <field name="endpoint_id" ref="demo_endpoint_update_partner_name" />
+        <field name="name">new_name</field>
+        <field name="param_type">string</field>
+        <field name="required" eval="True" />
+        <field name="sequence">20</field>
+    </record>
+
+    <!-- get_countries -->
+    <record id="demo_endpoint_get_countries" model="endpoint.endpoint">
+        <field name="name">get_countries</field>
+        <field name="route">/json2/endpoint/reference/get_countries</field>
+        <field name="route_group">reference</field>
+        <field name="exec_mode">json2</field>
+        <field name="request_method">POST</field>
+        <field name="request_content_type">application/json</field>
+        <field name="auth_type">bearer</field>
+        <field
+            name="json2_description"
+        >Return country records.</field>
+        <field name="json2_model_id" ref="base.model_res_country" />
+        <field name="json2_method">search_read</field>
+        <field name="json2_allowed_fields">name,code,phone_code</field>
+        <field name="json2_default_domain">[]</field>
+    </record>
+    <record id="demo_param_get_countries_domain" model="endpoint.json2.param">
+        <field name="endpoint_id" ref="demo_endpoint_get_countries" />
+        <field name="name">domain</field>
+        <field name="param_type">list</field>
+        <field name="required" eval="False" />
+        <field name="default_value">[]</field>
+        <field name="sequence">10</field>
+    </record>
+</odoo>

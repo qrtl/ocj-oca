@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Copyright 2026 Quartile (https://www.quartile.co)
+     License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl). -->
+<odoo>
+    <record id="endpoint_endpoint_json2_form_view" model="ir.ui.view">
+        <field name="name">endpoint.endpoint.json2.form</field>
+        <field name="model">endpoint.endpoint</field>
+        <field name="inherit_id" ref="endpoint.endpoint_endpoint_form_view" />
+        <field name="arch" type="xml">
+            <group name="config2" position="attributes">
+                <attribute name="invisible">exec_mode == 'json2'</attribute>
+            </group>
+            <page name="code" position="before">
+                <page
+                    name="json2_config"
+                    string="JSON2 Configuration"
+                    invisible="exec_mode != 'json2'"
+                >
+                    <group>
+                        <group>
+                            <field
+                                name="json2_model_id"
+                                required="exec_mode == 'json2'"
+                            />
+                            <field name="json2_model_name" invisible="1" />
+                            <field name="json2_method" />
+                        </group>
+                        <group>
+                            <field name="json2_allowed_fields" />
+                            <field name="json2_default_domain" />
+                        </group>
+                    </group>
+                    <group>
+                        <field name="json2_description" />
+                        <field name="json2_group_ids" widget="many2many_tags" />
+                    </group>
+                    <group>
+                        <field
+                            name="json2_code_snippet"
+                            widget="code"
+                        />
+                    </group>
+                    <field name="json2_param_ids">
+                        <list editable="bottom">
+                            <field name="sequence" widget="handle" />
+                            <field name="name" />
+                            <field name="description" />
+                            <field name="param_type" />
+                            <field name="required" />
+                            <field name="default_value" />
+                        </list>
+                    </field>
+                </page>
+            </page>
+        </field>
+    </record>
+</odoo>
