@@ -10,6 +10,11 @@
             <group name="config2" position="attributes">
                 <attribute name="invisible">exec_mode == 'json2'</attribute>
             </group>
+            <page name="request_content_schema" position="attributes">
+                <attribute name="invisible">
+                    exec_mode == 'json2' or not request_content_schema_applicable
+                </attribute>
+            </page>
             <page name="code" position="before">
                 <page
                     name="json2_config"
@@ -23,21 +28,20 @@
                                 required="exec_mode == 'json2'"
                             />
                             <field name="json2_model_name" invisible="1" />
-                            <field name="json2_method" />
+                            <field name="json2_group_ids" widget="many2many_tags" />
                         </group>
                         <group>
                             <field name="json2_allowed_fields" />
                             <field name="json2_default_domain" />
+                            <field name="json2_description" />
                         </group>
                     </group>
                     <group>
-                        <field name="json2_description" />
-                        <field name="json2_group_ids" widget="many2many_tags" />
-                    </group>
-                    <group>
+                        <field name="json2_method" invisible="json2_code_snippet" />
                         <field
                             name="json2_code_snippet"
                             widget="code"
+                            invisible="json2_method"
                         />
                     </group>
                     <field name="json2_param_ids">

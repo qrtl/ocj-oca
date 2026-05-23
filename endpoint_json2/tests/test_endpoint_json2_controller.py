@@ -83,7 +83,7 @@ class TestEndpointJson2Controller(HttpCase):
         super().tearDown()
 
     def _call(self, route_group, endpoint_name, payload=None):
-        url = f"/json2/endpoint/{route_group}/{endpoint_name}"
+        url = f"/json2/{route_group}/{endpoint_name}"
         return self.url_open(
             url,
             data=json.dumps(payload or {}),
@@ -91,7 +91,7 @@ class TestEndpointJson2Controller(HttpCase):
         )
 
     def _call_doc(self, path=""):
-        url = f"/json2/endpoint/doc{path}"
+        url = f"/json2/doc{path}"
         return self.url_open(
             url,
             headers=self.bearer,
@@ -285,7 +285,8 @@ class TestEndpointJson2Controller(HttpCase):
         )
         endpoint._handle_registry_sync()
         res = self._call(
-            "test", "update_name",
+            "test",
+            "update_name",
             {"ref": "SNIPPET_TEST", "new_name": "Updated Name"},
         )
         self.assertEqual(res.status_code, 200)

@@ -9,7 +9,7 @@ from odoo.http import request
 
 class EndpointJson2DocController(http.Controller):
     @http.route(
-        "/json2/endpoint/doc",
+        "/json2/doc",
         methods=["GET"],
         auth="bearer",
         type="http",
@@ -24,7 +24,7 @@ class EndpointJson2DocController(http.Controller):
         return request.make_json_response(result)
 
     @http.route(
-        "/json2/endpoint/doc/<string:route_group>",
+        "/json2/doc/<string:route_group>",
         methods=["GET"],
         auth="bearer",
         type="http",
@@ -32,9 +32,7 @@ class EndpointJson2DocController(http.Controller):
         save_session=False,
     )
     def doc_domain(self, route_group):
-        endpoints = self._get_accessible_endpoints(
-            [("route_group", "=", route_group)]
-        )
+        endpoints = self._get_accessible_endpoints([("route_group", "=", route_group)])
         if not endpoints:
             raise NotFound(f"No endpoints found for domain {route_group!r}")
         return request.make_json_response(
@@ -46,8 +44,7 @@ class EndpointJson2DocController(http.Controller):
         all_endpoints = request.env["endpoint.endpoint"].sudo().search(domain)
         user = request.env.user
         return all_endpoints.filtered(
-            lambda ep: not ep.json2_group_ids
-            or (ep.json2_group_ids & user.groups_id)
+            lambda ep: not ep.json2_group_ids or (ep.json2_group_ids & user.group_ids)
         )
 
     @staticmethod

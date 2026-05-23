@@ -2,10 +2,11 @@
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl).
 
 import json
+from datetime import date, datetime
 
 import werkzeug
 
-from odoo import api, fields, models
+from odoo import Command, api, fields, models
 from odoo.exceptions import AccessError, ValidationError
 from odoo.service.model import get_public_method
 from odoo.tools.safe_eval import json as safe_json
@@ -26,7 +27,7 @@ class EndpointMixin(models.AbstractModel):
 
     json2_model_id = fields.Many2one(
         "ir.model",
-        string="Model",
+        string="Target Model",
         ondelete="cascade",
         domain=[("transient", "=", False)],
     )
@@ -45,6 +46,8 @@ class EndpointMixin(models.AbstractModel):
     json2_allowed_fields = fields.Char(
         string="Allowed Fields",
         help="Comma-separated list of field names the API may return. "
+        "Use dotted notation (e.g. country_id.name, tag_ids.name) to include "
+        "specific fields from relational fields (Many2one, Many2many, One2many). "
         "Leave empty to allow all fields.",
     )
     json2_default_domain = fields.Char(
@@ -64,9 +67,9 @@ class EndpointMixin(models.AbstractModel):
         string="Parameters",
     )
     json2_code_snippet = fields.Text(
-        string="Code Snippet",
+        string="JSON2 Code Snippet",
         help="Optional Python code executed instead of the model method. "
-        "Available variables: Model, params, env, json, exceptions. "
+        "Available variables: Model, params, env, Command, json, exceptions. "
         "Use record.write({...}) for updates. "
         "Set the result in the 'result' variable.",
     )
@@ -78,7 +81,7 @@ class EndpointMixin(models.AbstractModel):
     def _compute_route(self):
         for rec in self:
             if rec.exec_mode == "json2" and rec.route_group and rec.name:
-                rec.route = f"/json2/endpoint/{rec.route_group}/{rec.name}"
+                rec.route = f"/json2/{rec.route_group}/{rec.name}"
             else:
                 rec.route = rec._clean_route()
 
@@ -119,8 +122,7 @@ class EndpointMixin(models.AbstractModel):
             if rec.request_content_type != "application/json":
                 raise ValidationError(
                     self.env._(
-                        "JSON2-RPC endpoints must use 'application/json' "
-                        "content type."
+                        "JSON2-RPC endpoints must use 'application/json' content type."
                     )
                 )
 
@@ -129,9 +131,7 @@ class EndpointMixin(models.AbstractModel):
         for rec in self:
             if rec.json2_method and rec.json2_method.startswith("_"):
                 raise ValidationError(
-                    self.env._(
-                        "Private methods (starting with '_') cannot be exposed."
-                    )
+                    self.env._("Private methods (starting with '_') cannot be exposed.")
                 )
 
     @api.constrains("json2_default_domain")
@@ -157,7 +157,26 @@ class EndpointMixin(models.AbstractModel):
                 continue
             Model = self.env[rec.json2_model_name]
             field_names = [f.strip() for f in rec.json2_allowed_fields.split(",")]
-            invalid = [f for f in field_names if f not in Model._fields]
+            invalid = []
+            for f in field_names:
+                if "." in f:
+                    base, sub = f.split(".", 1)
+                    if base not in Model._fields:
+                        invalid.append(f)
+                    elif Model._fields[base].type not in (
+                        "many2one",
+                        "many2many",
+                        "one2many",
+                    ):
+                        invalid.append(f)
+                    else:
+                        comodel = Model._fields[base].comodel_name
+                        if comodel not in self.env:
+                            invalid.append(f)
+                        elif sub not in self.env[comodel]._fields:
+                            invalid.append(f)
+                elif f not in Model._fields:
+                    invalid.append(f)
             if invalid:
                 raise ValidationError(
                     self.env._(
@@ -177,6 +196,10 @@ class EndpointMixin(models.AbstractModel):
         default_domain = json.loads(self.json2_default_domain or "[]")
         if default_domain:
             params["domain"] = default_domain + (params.get("domain") or [])
+        allowed = self._json2_get_allowed_field_list()
+        dotted_map = self._json2_parse_dotted_fields(allowed)
+        if dotted_map and params.get("fields"):
+            params["fields"] = list(set(params["fields"]) | dotted_map.keys())
         if self.json2_code_snippet:
             result = self._json2_exec_code_snippet(Model, params)
         else:
@@ -185,8 +208,10 @@ class EndpointMixin(models.AbstractModel):
             except (AttributeError, AccessError) as exc:
                 raise werkzeug.exceptions.NotFound(str(exc)) from exc
             result = method(Model, **params)
-        allowed = self._json2_get_allowed_field_list()
+        if dotted_map:
+            result = self._json2_resolve_dotted_fields(Model.env, result, dotted_map)
         result = self._json2_filter_result(result, allowed)
+        result = self._json2_serialize_values(result)
         return {"payload": result}
 
     def _json2_exec_code_snippet(self, Model, params):
@@ -194,11 +219,18 @@ class EndpointMixin(models.AbstractModel):
             "Model": Model,
             "params": params,
             "env": Model.env,
+            "Command": Command,
             "json": safe_json,
-            "exceptions": wrap_module(werkzeug.exceptions, [
-                "BadRequest", "Forbidden", "NotFound",
-                "UnprocessableEntity", "InternalServerError",
-            ]),
+            "exceptions": wrap_module(
+                werkzeug.exceptions,
+                [
+                    "BadRequest",
+                    "Forbidden",
+                    "NotFound",
+                    "UnprocessableEntity",
+                    "InternalServerError",
+                ],
+            ),
         }
         safe_eval(self.json2_code_snippet, eval_ctx, mode="exec")
         if "result" not in eval_ctx:
@@ -210,7 +242,7 @@ class EndpointMixin(models.AbstractModel):
     def _json2_check_group_access(self, request):
         if not self.json2_group_ids:
             return
-        if not (self.json2_group_ids & request.env.user.groups_id):
+        if not (self.json2_group_ids & request.env.user.group_ids):
             raise werkzeug.exceptions.Forbidden(
                 "User does not belong to any allowed group"
             )
@@ -250,6 +282,94 @@ class EndpointMixin(models.AbstractModel):
         if not self.json2_allowed_fields:
             return []
         return [f.strip() for f in self.json2_allowed_fields.split(",")]
+
+    @staticmethod
+    def _json2_parse_dotted_fields(allowed):
+        dotted = {}
+        for f in allowed:
+            if "." in f:
+                base, sub = f.split(".", 1)
+                dotted.setdefault(base, []).append(sub)
+        return dotted
+
+    def _json2_resolve_dotted_fields(self, env, result, dotted_map):
+        rows = (
+            result
+            if isinstance(result, list)
+            else [result]
+            if isinstance(result, dict)
+            else []
+        )
+        if not rows:
+            return result
+        Model = env[self.json2_model_name]
+        for base_field, sub_fields in dotted_map.items():
+            field_def = Model._fields.get(base_field)
+            if not field_def or field_def.type not in (
+                "many2one",
+                "many2many",
+                "one2many",
+            ):
+                continue
+            is_x2many = field_def.type != "many2one"
+            ids = set()
+            for row in rows:
+                if isinstance(row, dict):
+                    ids.update(self._json2_extract_rel_ids(row.get(base_field)))
+            if ids:
+                related = {
+                    r["id"]: r
+                    for r in env[field_def.comodel_name]
+                    .sudo()
+                    .search_read([("id", "in", list(ids))], fields=sub_fields)
+                }
+            else:
+                related = {}
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                row_ids = self._json2_extract_rel_ids(row.get(base_field))
+                if is_x2many:
+                    recs = [related[i] for i in row_ids if i in related]
+                    for sub in sub_fields:
+                        row[f"{base_field}.{sub}"] = [r.get(sub, False) for r in recs]
+                else:
+                    rec = related.get(row_ids[0], {}) if row_ids else {}
+                    for sub in sub_fields:
+                        row[f"{base_field}.{sub}"] = rec.get(sub, False)
+        return result
+
+    @staticmethod
+    def _json2_extract_rel_ids(val):
+        if not val:
+            return []
+        if isinstance(val, int):
+            return [val]
+        if isinstance(val, (list, tuple)):
+            if val and isinstance(val[0], int):
+                if len(val) == 2 and isinstance(val[1], str):
+                    return [val[0]]
+                return list(val)
+        if isinstance(val, dict):
+            rec_id = val.get("id")
+            return [rec_id] if rec_id else []
+        return []
+
+    @staticmethod
+    def _json2_serialize_value(val):
+        if isinstance(val, datetime):
+            return val.strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(val, date):
+            return val.isoformat()
+        return val
+
+    @classmethod
+    def _json2_serialize_values(cls, result):
+        if isinstance(result, list):
+            return [cls._json2_serialize_values(item) for item in result]
+        if isinstance(result, dict):
+            return {k: cls._json2_serialize_value(v) for k, v in result.items()}
+        return cls._json2_serialize_value(result)
 
     @staticmethod
     def _json2_filter_result(result, allowed_fields):
