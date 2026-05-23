@@ -14,7 +14,7 @@ class TestEndpointJson2(CommonEndpointJson2):
         )
 
     def test_route_auto_computed(self):
-        self.assertEqual(self.endpoint.route, "/json2/endpoint/contacts/get_partners")
+        self.assertEqual(self.endpoint.route, "/json2/contacts/get_partners")
 
     def test_private_method_rejected(self):
         with self.assertRaises(ValidationError):
@@ -149,3 +149,75 @@ class TestEndpointJson2(CommonEndpointJson2):
             }
         )
         self.assertTrue(ep.json2_code_snippet)
+
+    def test_dotted_allowed_fields_valid(self):
+        self.endpoint.json2_allowed_fields = "name,country_id.name"
+        self.assertEqual(
+            self.endpoint._json2_get_allowed_field_list(),
+            ["name", "country_id.name"],
+        )
+
+    def test_dotted_allowed_fields_invalid_base(self):
+        with self.assertRaises(ValidationError):
+            self.endpoint.json2_allowed_fields = "name,nonexistent_id.name"
+
+    def test_dotted_allowed_fields_non_m2o(self):
+        with self.assertRaises(ValidationError):
+            self.endpoint.json2_allowed_fields = "name,email.something"
+
+    def test_dotted_allowed_fields_invalid_sub(self):
+        with self.assertRaises(ValidationError):
+            self.endpoint.json2_allowed_fields = "name,country_id.nonexistent"
+
+    def test_parse_dotted_fields(self):
+        allowed = ["name", "country_id.name", "country_id.code", "email"]
+        dotted = self.endpoint._json2_parse_dotted_fields(allowed)
+        self.assertEqual(dotted, {"country_id": ["name", "code"]})
+
+    def test_resolve_dotted_fields(self):
+        country = self.env["res.country"].search([("code", "=", "JP")], limit=1)
+        self.assertTrue(country)
+        result = [
+            {"id": 1, "name": "Test", "country_id": (country.id, country.display_name)},
+            {"id": 2, "name": "Test2", "country_id": False},
+        ]
+        dotted_map = {"country_id": ["name", "code"]}
+        self.endpoint._json2_resolve_dotted_fields(self.env, result, dotted_map)
+        self.assertEqual(result[0]["country_id.name"], country.name)
+        self.assertEqual(result[0]["country_id.code"], "JP")
+        self.assertFalse(result[1]["country_id.name"])
+        self.assertFalse(result[1]["country_id.code"])
+
+    def test_dotted_allowed_fields_m2m_valid(self):
+        self.endpoint.json2_allowed_fields = "name,category_id.name"
+        self.assertEqual(
+            self.endpoint._json2_get_allowed_field_list(),
+            ["name", "category_id.name"],
+        )
+
+    def test_resolve_dotted_fields_x2many(self):
+        tags = self.env["res.partner.category"].search([], limit=2)
+        if len(tags) < 2:
+            tags = self.env["res.partner.category"].create(
+                [{"name": "TagA"}, {"name": "TagB"}]
+            )
+        result = [
+            {"id": 1, "name": "Test", "category_id": tags.ids},
+            {"id": 2, "name": "Test2", "category_id": []},
+        ]
+        dotted_map = {"category_id": ["name"]}
+        self.endpoint._json2_resolve_dotted_fields(self.env, result, dotted_map)
+        self.assertEqual(result[0]["category_id.name"], tags.mapped("name"))
+        self.assertEqual(result[1]["category_id.name"], [])
+
+    def test_filter_excludes_base_when_only_dotted(self):
+        result = {
+            "name": "Test",
+            "country_id": (1, "Japan"),
+            "country_id.name": "Japan",
+        }
+        filtered = self.endpoint._json2_filter_result(
+            result, ["name", "country_id.name"]
+        )
+        self.assertEqual(filtered, {"name": "Test", "country_id.name": "Japan"})
+        self.assertNotIn("country_id", filtered)

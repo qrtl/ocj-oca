@@ -1,1 +1,2 @@
-- Yoshi Tashiro (Quartile) \<tashiro@quartile.co\>
+- Quartile \<<https://www.quartile.co>\>
+  - Yoshi Tashiro

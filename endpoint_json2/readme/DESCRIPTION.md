@@ -4,4 +4,4 @@ model, method, and parameters — the module handles dispatch, parameter
 validation, access control, and result filtering.
 
 Also provides auto-generated API documentation endpoints at
-`/json2/endpoint/doc`.
+`/json2/doc`.
