@@ -78,7 +78,7 @@ class EndpointMixin(models.AbstractModel):
     )
 
     def _selection_exec_mode(self):
-        return super()._selection_exec_mode() + [("json2", "JSON2-RPC")]
+        return super()._selection_exec_mode() + [("json2", "JSON-2 API")]
 
     @api.depends("route", "exec_mode", "route_group", "name")
     def _compute_route(self):
@@ -100,12 +100,12 @@ class EndpointMixin(models.AbstractModel):
     def _validate_exec__json2(self):
         if not self.json2_model_id:
             raise ValidationError(
-                self.env._("Exec mode is set to 'JSON2-RPC': you must select a model.")
+                self.env._("Exec mode is set to 'JSON-2 API': you must select a model.")
             )
         if not self.json2_method and not self.json2_code_snippet:
             raise ValidationError(
                 self.env._(
-                    "Exec mode is set to 'JSON2-RPC': "
+                    "Exec mode is set to 'JSON-2 API': "
                     "you must specify a method or provide a code snippet."
                 )
             )
@@ -118,14 +118,14 @@ class EndpointMixin(models.AbstractModel):
             if rec.request_method != "POST":
                 raise ValidationError(
                     self.env._(
-                        "JSON2-RPC endpoints must use POST "
+                        "JSON-2 API endpoints must use POST "
                         "(parameters are sent as a JSON body)."
                     )
                 )
             if rec.request_content_type != "application/json":
                 raise ValidationError(
                     self.env._(
-                        "JSON2-RPC endpoints must use 'application/json' content type."
+                        "JSON-2 API endpoints must use 'application/json' content type."
                     )
                 )
 
@@ -274,8 +274,7 @@ class EndpointMixin(models.AbstractModel):
             params[param_def.name] = value
         return params
 
-    @staticmethod
-    def _json2_check_param_type(value, expected_type):
+    def _json2_check_param_type(self, value, expected_type):
         if isinstance(value, bool) and expected_type is not bool:
             return False
         if expected_type is float:
@@ -302,8 +301,7 @@ class EndpointMixin(models.AbstractModel):
                 aliases[parts[0]] = parts[1]
         return field_list, aliases
 
-    @staticmethod
-    def _json2_parse_dotted_fields(allowed):
+    def _json2_parse_dotted_fields(self, allowed):
         dotted = {}
         for f in allowed:
             if "." in f:
@@ -358,8 +356,7 @@ class EndpointMixin(models.AbstractModel):
                         row[f"{base_field}.{sub}"] = rec.get(sub, False)
         return result
 
-    @staticmethod
-    def _json2_extract_rel_ids(val):
+    def _json2_extract_rel_ids(self, val):
         if not val:
             return []
         if isinstance(val, int):
@@ -374,24 +371,21 @@ class EndpointMixin(models.AbstractModel):
             return [rec_id] if rec_id else []
         return []
 
-    @staticmethod
-    def _json2_serialize_value(val):
+    def _json2_serialize_value(self, val):
         if isinstance(val, datetime):
             return val.strftime("%Y-%m-%d %H:%M:%S")
         if isinstance(val, date):
             return val.isoformat()
         return val
 
-    @classmethod
-    def _json2_serialize_values(cls, result):
+    def _json2_serialize_values(self, result):
         if isinstance(result, list):
-            return [cls._json2_serialize_values(item) for item in result]
+            return [self._json2_serialize_values(item) for item in result]
         if isinstance(result, dict):
-            return {k: cls._json2_serialize_value(v) for k, v in result.items()}
-        return cls._json2_serialize_value(result)
+            return {k: self._json2_serialize_value(v) for k, v in result.items()}
+        return self._json2_serialize_value(result)
 
-    @staticmethod
-    def _json2_filter_result(result, response_fields):
+    def _json2_filter_result(self, result, response_fields):
         if not response_fields:
             return result
         if isinstance(result, list):
@@ -405,8 +399,7 @@ class EndpointMixin(models.AbstractModel):
             return {k: v for k, v in result.items() if k in response_fields}
         return result
 
-    @staticmethod
-    def _json2_apply_aliases(result, aliases):
+    def _json2_apply_aliases(self, result, aliases):
         def _rename(row):
             if not isinstance(row, dict):
                 return row

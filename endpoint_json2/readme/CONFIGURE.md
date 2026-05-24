@@ -1,5 +1,5 @@
 Go to *Settings > Technical > Endpoints* and create a new endpoint with
-**Exec Mode** set to **JSON2-RPC**.
+**Exec Mode** set to **JSON-2 API**.
 
 ## Basic Setup
 

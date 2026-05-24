@@ -2,7 +2,7 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 {
     "name": "Endpoint JSON2",
-    "summary": "Declarative JSON2-RPC endpoints on the endpoint stack",
+    "summary": "Declarative JSON-2 API endpoints on the endpoint stack",
     "version": "19.0.1.0.0",
     "license": "LGPL-3",
     "development_status": "Alpha",
