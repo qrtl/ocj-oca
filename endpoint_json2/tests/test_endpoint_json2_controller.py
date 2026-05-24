@@ -6,6 +6,7 @@ import os
 from datetime import datetime, timedelta
 from unittest import skipIf
 
+from odoo import Command
 from odoo.tests import new_test_user, tagged
 from odoo.tests.common import HttpCase
 
@@ -105,6 +106,7 @@ class TestEndpointJson2Controller(HttpCase):
         self.assertIsInstance(data, list)
         for row in data:
             self.assertIn("name", row)
+            self.assertIn("email", row)
             self.assertNotIn("phone", row)
 
     def test_dispatch_with_limit(self):
@@ -201,8 +203,66 @@ class TestEndpointJson2Controller(HttpCase):
         res = self._call("contacts", "get_partners")
         self.assertEqual(res.status_code, 200)
         data = res.json()
+        self.assertTrue(data)
         names = [row["name"] for row in data]
         self.assertNotIn("Test Individual", names)
+
+    def test_dispatch_domain_merge(self):
+        company = self.env["res.partner"].create(
+            {"name": "MergeCo", "ref": "MERGE_TEST", "is_company": True}
+        )
+        res = self._call(
+            "contacts",
+            "get_partners",
+            {"domain": [["ref", "=", "MERGE_TEST"]]},
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["name"], company.name)
+
+    def test_dispatch_dotted_fields(self):
+        country_jp = self.env["res.country"].search([("code", "=", "JP")], limit=1)
+        self.assertTrue(country_jp)
+        partner = self.env["res.partner"].create(
+            {
+                "name": "DottedCo",
+                "ref": "DOTTED_TEST",
+                "is_company": True,
+                "country_id": country_jp.id,
+            }
+        )
+        endpoint = self.env["endpoint.endpoint"].create(
+            {
+                "name": "dotted_partners",
+                "route_group": "test",
+                "exec_mode": "json2",
+                "request_method": "POST",
+                "request_content_type": "application/json",
+                "auth_type": "bearer",
+                "json2_model_id": self.model_partner.id,
+                "json2_method": "search_read",
+                "json2_response_fields": "name\ncountry_id.name country",
+            }
+        )
+        self.env["endpoint.json2.param"].create(
+            {
+                "endpoint_id": endpoint.id,
+                "name": "domain",
+                "param_type": "list",
+            }
+        )
+        endpoint._handle_registry_sync()
+        res = self._call(
+            "test", "dotted_partners", {"domain": [["ref", "=", "DOTTED_TEST"]]}
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["name"], partner.name)
+        self.assertEqual(data[0]["country"], country_jp.name)
+        self.assertNotIn("country_id", data[0])
+        self.assertNotIn("country_id.name", data[0])
 
     def test_dispatch_group_access_denied(self):
         group = self.env["res.groups"].create({"name": "Secret API Group"})
@@ -216,7 +276,7 @@ class TestEndpointJson2Controller(HttpCase):
                 "auth_type": "bearer",
                 "json2_model_id": self.model_partner.id,
                 "json2_method": "search_read",
-                "json2_group_ids": [(4, group.id)],
+                "json2_group_ids": [Command.link(group.id)],
             }
         )
         endpoint._handle_registry_sync()
@@ -312,6 +372,38 @@ class TestEndpointJson2Controller(HttpCase):
         res = self._call("test", "bad_snippet")
         self.assertEqual(res.status_code, 500)
 
+    def test_dispatch_with_alias(self):
+        endpoint = self.env["endpoint.endpoint"].create(
+            {
+                "name": "aliased_partners",
+                "route_group": "test",
+                "exec_mode": "json2",
+                "request_method": "POST",
+                "request_content_type": "application/json",
+                "auth_type": "bearer",
+                "json2_model_id": self.model_partner.id,
+                "json2_method": "search_read",
+                "json2_response_fields": "name label\nemail",
+            }
+        )
+        self.env["endpoint.json2.param"].create(
+            {
+                "endpoint_id": endpoint.id,
+                "name": "limit",
+                "param_type": "integer",
+                "default_value": "5",
+            }
+        )
+        endpoint._handle_registry_sync()
+        res = self._call("test", "aliased_partners")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data)
+        for row in data:
+            self.assertIn("label", row)
+            self.assertNotIn("name", row)
+            self.assertIn("email", row)
+
     def test_doc_excludes_restricted_endpoints(self):
         group = self.env["res.groups"].create({"name": "Hidden Group"})
         self.env["endpoint.endpoint"].create(
@@ -324,7 +416,7 @@ class TestEndpointJson2Controller(HttpCase):
                 "auth_type": "bearer",
                 "json2_model_id": self.model_partner.id,
                 "json2_method": "search_read",
-                "json2_group_ids": [(4, group.id)],
+                "json2_group_ids": [Command.link(group.id)],
             }
         )
         res = self._call_doc()
