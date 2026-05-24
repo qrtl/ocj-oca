@@ -5,6 +5,12 @@
         <field name="model">endpoint.endpoint</field>
         <field name="inherit_id" ref="endpoint.endpoint_endpoint_form_view" />
         <field name="arch" type="xml">
+            <field name="route" position="attributes">
+                <attribute name="readonly">exec_mode == 'json2'</attribute>
+            </field>
+            <field name="route_group" position="attributes">
+                <attribute name="required">exec_mode == 'json2'</attribute>
+            </field>
             <group name="config2" position="attributes">
                 <attribute name="invisible">exec_mode == 'json2'</attribute>
             </group>
@@ -29,6 +35,7 @@
                             <field name="json2_default_domain" />
                         </group>
                         <group string="Access">
+                            <field name="json2_doc_url" widget="url" />
                             <field name="json2_group_ids" widget="many2many_tags" />
                             <field name="json2_description" />
                         </group>

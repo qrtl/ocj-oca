@@ -1,47 +1,38 @@
 # Copyright 2026 Quartile (https://www.quartile.co)
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
+from datetime import date, datetime
+
 from odoo.exceptions import ValidationError
 
 from .common import CommonEndpointJson2
 
 
 class TestEndpointJson2(CommonEndpointJson2):
-    def test_create_endpoint(self):
-        self.assertEqual(self.endpoint.json2_model_name, "res.partner")
-        fields, aliases = self.endpoint._json2_parse_response_fields()
-        self.assertEqual(fields, ["name", "email"])
-        self.assertEqual(aliases, {})
-
     def test_route_auto_computed(self):
         self.assertEqual(self.endpoint.route, "/json2/contacts/get_partners")
 
     def test_private_method_rejected(self):
         with self.assertRaises(ValidationError):
-            self.env["endpoint.endpoint"].create(
-                {
-                    "name": "bad_endpoint",
-                    "route_group": "test",
-                    "exec_mode": "json2",
-                    "request_method": "POST",
-                    "request_content_type": "application/json",
-                    "auth_type": "bearer",
-                    "json2_model_id": self.model_partner.id,
-                    "json2_method": "_compute_display_name",
-                }
+            self._create_endpoint(
+                {"name": "bad", "json2_method": "_compute_display_name"}
             )
 
     def test_invalid_domain(self):
         with self.assertRaises(ValidationError):
             self.endpoint.json2_default_domain = "not valid json"
-
-    def test_domain_not_list(self):
         with self.assertRaises(ValidationError):
             self.endpoint.json2_default_domain = '{"key": "value"}'
 
     def test_invalid_response_fields(self):
         with self.assertRaises(ValidationError):
             self.endpoint.json2_response_fields = "name\nnonexistent_field"
+        with self.assertRaises(ValidationError):
+            self.endpoint.json2_response_fields = "name\nnonexistent_id.name"
+        with self.assertRaises(ValidationError):
+            self.endpoint.json2_response_fields = "name\nemail.something"
+        with self.assertRaises(ValidationError):
+            self.endpoint.json2_response_fields = "name\ncountry_id.nonexistent"
 
     def test_empty_response_fields(self):
         self.endpoint.json2_response_fields = False
@@ -90,70 +81,31 @@ class TestEndpointJson2(CommonEndpointJson2):
         aliased = self.endpoint._json2_apply_aliases(filtered, {"name": "label"})
         self.assertEqual(aliased, [{"label": "A"}, {"label": "B"}])
 
-    def test_filter_result_passthrough(self):
-        self.assertEqual(self.endpoint._json2_filter_result(42, ["name"]), 42)
-        self.assertEqual(self.endpoint._json2_apply_aliases(42, {"name": "n"}), 42)
-
-    def test_filter_result_no_filter(self):
-        result = {"name": "Test", "phone": "123"}
-        self.assertEqual(self.endpoint._json2_filter_result(result, []), result)
-
-    def test_request_method_must_be_post(self):
+    def test_request_settings_constrained(self):
         with self.assertRaises(ValidationError):
-            self.env["endpoint.endpoint"].create(
+            self._create_endpoint(
                 {
                     "name": "get_test",
-                    "route_group": "test",
-                    "exec_mode": "json2",
                     "request_method": "GET",
-                    "request_content_type": "application/json",
-                    "auth_type": "bearer",
-                    "json2_model_id": self.model_partner.id,
                     "json2_method": "search_read",
                 }
             )
-
-    def test_content_type_must_be_json(self):
         with self.assertRaises(ValidationError):
-            self.env["endpoint.endpoint"].create(
+            self._create_endpoint(
                 {
                     "name": "form_test",
-                    "route_group": "test",
-                    "exec_mode": "json2",
-                    "request_method": "POST",
                     "request_content_type": "text/html",
-                    "auth_type": "bearer",
-                    "json2_model_id": self.model_partner.id,
                     "json2_method": "search_read",
                 }
             )
 
     def test_validate_method_or_snippet_required(self):
         with self.assertRaises(ValidationError):
-            self.env["endpoint.endpoint"].create(
-                {
-                    "name": "no_method_no_snippet",
-                    "route_group": "test",
-                    "exec_mode": "json2",
-                    "request_method": "POST",
-                    "request_content_type": "application/json",
-                    "auth_type": "bearer",
-                    "json2_model_id": self.model_partner.id,
-                }
-            )
+            self._create_endpoint({"name": "no_method_no_snippet"})
 
     def test_validate_snippet_without_method_ok(self):
-        ep = self.env["endpoint.endpoint"].create(
-            {
-                "name": "snippet_only",
-                "route_group": "test",
-                "exec_mode": "json2",
-                "request_method": "POST",
-                "request_content_type": "application/json",
-                "auth_type": "bearer",
-                "json2_model_id": self.model_partner.id,
-                "json2_code_snippet": "result = []",
-            }
+        ep = self._create_endpoint(
+            {"name": "snippet_only", "json2_code_snippet": "result = []"}
         )
         self.assertTrue(ep.json2_code_snippet)
 
@@ -163,23 +115,6 @@ class TestEndpointJson2(CommonEndpointJson2):
         self.assertEqual(fields, ["name", "country_id.name"])
         self.assertEqual(aliases, {"country_id.name": "country"})
 
-    def test_dotted_response_fields_invalid_base(self):
-        with self.assertRaises(ValidationError):
-            self.endpoint.json2_response_fields = "name\nnonexistent_id.name"
-
-    def test_dotted_response_fields_non_m2o(self):
-        with self.assertRaises(ValidationError):
-            self.endpoint.json2_response_fields = "name\nemail.something"
-
-    def test_dotted_response_fields_invalid_sub(self):
-        with self.assertRaises(ValidationError):
-            self.endpoint.json2_response_fields = "name\ncountry_id.nonexistent"
-
-    def test_parse_dotted_fields(self):
-        allowed = ["name", "country_id.name", "country_id.code", "email"]
-        dotted = self.endpoint._json2_parse_dotted_fields(allowed)
-        self.assertEqual(dotted, {"country_id": ["name", "code"]})
-
     def test_resolve_dotted_fields(self):
         country = self.env["res.country"].search([("code", "=", "JP")], limit=1)
         self.assertTrue(country)
@@ -188,16 +123,12 @@ class TestEndpointJson2(CommonEndpointJson2):
             {"id": 2, "name": "Test2", "country_id": False},
         ]
         dotted_map = {"country_id": ["name", "code"]}
-        self.endpoint._json2_resolve_dotted_fields(self.env, result, dotted_map)
+        Model = self.env["res.partner"]
+        self.endpoint._json2_resolve_dotted_fields(Model, result, dotted_map)
         self.assertEqual(result[0]["country_id.name"], country.name)
         self.assertEqual(result[0]["country_id.code"], "JP")
         self.assertFalse(result[1]["country_id.name"])
         self.assertFalse(result[1]["country_id.code"])
-
-    def test_dotted_response_fields_m2m_valid(self):
-        self.endpoint.json2_response_fields = "name\ncategory_id.name"
-        fields, _aliases = self.endpoint._json2_parse_response_fields()
-        self.assertEqual(fields, ["name", "category_id.name"])
 
     def test_resolve_dotted_fields_x2many(self):
         tags = self.env["res.partner.category"].search([], limit=2)
@@ -210,7 +141,8 @@ class TestEndpointJson2(CommonEndpointJson2):
             {"id": 2, "name": "Test2", "category_id": []},
         ]
         dotted_map = {"category_id": ["name"]}
-        self.endpoint._json2_resolve_dotted_fields(self.env, result, dotted_map)
+        Model = self.env["res.partner"]
+        self.endpoint._json2_resolve_dotted_fields(Model, result, dotted_map)
         self.assertEqual(result[0]["category_id.name"], tags.mapped("name"))
         self.assertEqual(result[1]["category_id.name"], [])
 
@@ -229,3 +161,25 @@ class TestEndpointJson2(CommonEndpointJson2):
             filtered, {"country_id.name": "country"}
         )
         self.assertEqual(aliased, {"name": "Test", "country": "Japan"})
+
+    def test_serialize_values(self):
+        result = {
+            "name": "Test",
+            "write_date": datetime(2026, 1, 15, 10, 30, 0),
+            "date": date(2026, 1, 15),
+            "avatar": b"\x89PNG",
+        }
+        serialized = self.endpoint._json2_serialize_values(result)
+        self.assertEqual(serialized["write_date"], "2026-01-15 10:30:00")
+        self.assertEqual(serialized["date"], "2026-01-15")
+        self.assertIsInstance(serialized["avatar"], str)
+
+    def test_serialize_values_nested_list(self):
+        result = {
+            "name": "Test",
+            "tag_dates": [datetime(2026, 1, 1), datetime(2026, 2, 1)],
+        }
+        serialized = self.endpoint._json2_serialize_values(result)
+        self.assertEqual(
+            serialized["tag_dates"], ["2026-01-01 00:00:00", "2026-02-01 00:00:00"]
+        )

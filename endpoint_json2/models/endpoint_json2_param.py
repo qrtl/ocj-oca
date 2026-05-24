@@ -3,8 +3,19 @@
 
 import json
 
+import werkzeug
+
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
+
+PARAM_TYPE_MAP = {
+    "string": str,
+    "integer": int,
+    "float": float,
+    "boolean": bool,
+    "list": list,
+    "dict": dict,
+}
 
 
 class EndpointJson2Param(models.Model):
@@ -37,6 +48,32 @@ class EndpointJson2Param(models.Model):
         help="Default value (JSON-encoded) when the parameter is not provided.",
     )
     sequence = fields.Integer(default=10)
+
+    def _check_param_type(self, value):
+        self.ensure_one()
+        expected_type = PARAM_TYPE_MAP.get(self.param_type)
+        if not expected_type:
+            return True
+        if isinstance(value, bool) and expected_type is not bool:
+            return False
+        if expected_type is float:
+            return isinstance(value, (int, float))
+        return isinstance(value, expected_type)
+
+    def _extract_value(self, raw_value):
+        self.ensure_one()
+        value = raw_value
+        if value is None and self.default_value:
+            value = json.loads(self.default_value)
+        if value is None and self.required:
+            raise werkzeug.exceptions.UnprocessableEntity(
+                f"Missing required parameter: {self.name}"
+            )
+        if value is not None and not self._check_param_type(value):
+            raise werkzeug.exceptions.UnprocessableEntity(
+                f"Parameter {self.name!r} must be of type {self.param_type}"
+            )
+        return value
 
     @api.constrains("default_value")
     def _check_default_value(self):
