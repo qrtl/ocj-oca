@@ -1,23 +1,29 @@
 Go to *Settings > Technical > Endpoints* and create a new endpoint with
 **Exec Mode** set to **JSON2-RPC**.
 
-### Basic Setup
+## Basic Setup
 
 - **Model**: The Odoo model to operate on (e.g. `res.partner`).
 - **Method**: A public model method (e.g. `search_read`). Alternatively,
   provide a **Code Snippet** for custom logic — these two fields are
   mutually exclusive.
-- **Allowed Fields**: Comma-separated list of fields the API may return.
-  Use dotted notation for relational fields (e.g.
-  `name,email,country_id.name,category_id.name`). Dotted fields work
-  with Many2one, Many2many, and One2many relations. Leave empty to allow
-  all fields.
+- **Response Fields**: One field per line. Optionally follow with an
+  alias to rename the key in the response. Use dotted notation for
+  relational fields (Many2one, Many2many, One2many). Leave empty to
+  return all fields. Example:
+
+  ```
+  name
+  email
+  country_id.name country
+  write_date last_modified
+  ```
 - **Default Domain**: A JSON-formatted domain filter applied to every
   request (e.g. `[["active", "=", true]]`).
 - **Parameters**: Define named parameters with types, defaults, and
   required flags. These are validated before the method is called.
 
-### Access Control
+## Access Control
 
 All endpoint execution is wrapped in `sudo()`, allowing API users to
 operate with minimal Odoo privileges. Access is controlled at two levels:
@@ -28,10 +34,10 @@ operate with minimal Odoo privileges. Access is controlled at two levels:
   Create integration-specific groups (e.g. "Hospital System", "WMS") and
   assign them to the corresponding API users. Each endpoint declares
   which groups may call it. Leave empty to allow any authenticated user.
-- **Allowed Fields**: Controls which data fields are exposed in the
+- **Response Fields**: Controls which data fields are included in the
   response, regardless of what the underlying model method returns.
 
-### Code Snippets
+## Code Snippets
 
 For operations that go beyond a single model method call, use a code
 snippet instead of the method field. Available variables:

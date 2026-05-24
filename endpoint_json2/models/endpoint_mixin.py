@@ -1,5 +1,5 @@
 # Copyright 2026 Quartile (https://www.quartile.co)
-# License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl).
+# License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
 import json
 from datetime import date, datetime
@@ -43,12 +43,15 @@ class EndpointMixin(models.AbstractModel):
         string="Description",
         help="Displayed in the API documentation endpoint.",
     )
-    json2_allowed_fields = fields.Char(
-        string="Allowed Fields",
-        help="Comma-separated list of field names the API may return. "
-        "Use dotted notation (e.g. country_id.name, tag_ids.name) to include "
-        "specific fields from relational fields (Many2one, Many2many, One2many). "
-        "Leave empty to allow all fields.",
+    json2_response_fields = fields.Text(
+        string="Response Fields",
+        help="One field per line. Optionally add an alias to rename in output.\n"
+        "Use dotted notation for relational fields (Many2one, Many2many, One2many).\n"
+        "Leave empty to return all fields.\n\n"
+        "Examples:\n"
+        "  name\n"
+        "  country_id.name country\n"
+        "  write_date last_modified",
     )
     json2_default_domain = fields.Char(
         string="Default Domain",
@@ -148,15 +151,15 @@ class EndpointMixin(models.AbstractModel):
                     self.env._("Default domain must be a valid JSON list.")
                 ) from None
 
-    @api.constrains("json2_allowed_fields", "json2_model_id")
-    def _check_json2_allowed_fields(self):
+    @api.constrains("json2_response_fields", "json2_model_id")
+    def _check_json2_response_fields(self):
         for rec in self:
-            if not rec.json2_allowed_fields or not rec.json2_model_name:
+            if not rec.json2_response_fields or not rec.json2_model_name:
                 continue
             if rec.json2_model_name not in self.env:
                 continue
             Model = self.env[rec.json2_model_name]
-            field_names = [f.strip() for f in rec.json2_allowed_fields.split(",")]
+            field_names, _aliases = rec._json2_parse_response_fields()
             invalid = []
             for f in field_names:
                 if "." in f:
@@ -196,8 +199,8 @@ class EndpointMixin(models.AbstractModel):
         default_domain = json.loads(self.json2_default_domain or "[]")
         if default_domain:
             params["domain"] = default_domain + (params.get("domain") or [])
-        allowed = self._json2_get_allowed_field_list()
-        dotted_map = self._json2_parse_dotted_fields(allowed)
+        response_fields, aliases = self._json2_parse_response_fields()
+        dotted_map = self._json2_parse_dotted_fields(response_fields)
         if dotted_map and params.get("fields"):
             params["fields"] = list(set(params["fields"]) | dotted_map.keys())
         if self.json2_code_snippet:
@@ -210,7 +213,9 @@ class EndpointMixin(models.AbstractModel):
             result = method(Model, **params)
         if dotted_map:
             result = self._json2_resolve_dotted_fields(Model.env, result, dotted_map)
-        result = self._json2_filter_result(result, allowed)
+        result = self._json2_filter_result(result, response_fields)
+        if aliases:
+            result = self._json2_apply_aliases(result, aliases)
         result = self._json2_serialize_values(result)
         return {"payload": result}
 
@@ -277,11 +282,25 @@ class EndpointMixin(models.AbstractModel):
             return isinstance(value, (int, float))
         return isinstance(value, expected_type)
 
-    def _json2_get_allowed_field_list(self):
+    def _json2_parse_response_fields(self):
+        """Parse response fields text into a field list and alias map.
+
+        Returns (fields, aliases) where aliases maps field_name -> alias.
+        """
         self.ensure_one()
-        if not self.json2_allowed_fields:
-            return []
-        return [f.strip() for f in self.json2_allowed_fields.split(",")]
+        if not self.json2_response_fields:
+            return [], {}
+        field_list = []
+        aliases = {}
+        for line in self.json2_response_fields.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            field_list.append(parts[0])
+            if len(parts) > 1:
+                aliases[parts[0]] = parts[1]
+        return field_list, aliases
 
     @staticmethod
     def _json2_parse_dotted_fields(allowed):
@@ -372,16 +391,29 @@ class EndpointMixin(models.AbstractModel):
         return cls._json2_serialize_value(result)
 
     @staticmethod
-    def _json2_filter_result(result, allowed_fields):
-        if not allowed_fields:
+    def _json2_filter_result(result, response_fields):
+        if not response_fields:
             return result
         if isinstance(result, list):
             return [
-                {k: v for k, v in row.items() if k in allowed_fields}
+                {k: v for k, v in row.items() if k in response_fields}
                 if isinstance(row, dict)
                 else row
                 for row in result
             ]
         if isinstance(result, dict):
-            return {k: v for k, v in result.items() if k in allowed_fields}
+            return {k: v for k, v in result.items() if k in response_fields}
+        return result
+
+    @staticmethod
+    def _json2_apply_aliases(result, aliases):
+        def _rename(row):
+            if not isinstance(row, dict):
+                return row
+            return {aliases.get(k, k): v for k, v in row.items()}
+
+        if isinstance(result, list):
+            return [_rename(row) for row in result]
+        if isinstance(result, dict):
+            return _rename(result)
         return result

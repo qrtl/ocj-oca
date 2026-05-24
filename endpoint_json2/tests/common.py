@@ -1,5 +1,5 @@
 # Copyright 2026 Quartile (https://www.quartile.co)
-# License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl).
+# License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
 from odoo.tests.common import TransactionCase, tagged
 
@@ -21,7 +21,7 @@ class CommonEndpointJson2(TransactionCase):
                 "json2_description": "Return partner records",
                 "json2_model_id": cls.model_partner.id,
                 "json2_method": "search_read",
-                "json2_allowed_fields": "name,email",
+                "json2_response_fields": "name\nemail",
                 "json2_default_domain": "[]",
             }
         )

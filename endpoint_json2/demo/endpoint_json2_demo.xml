@@ -1,6 +1,4 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<!-- Copyright 2026 Quartile (https://www.quartile.co)
-     License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl). -->
 <odoo>
     <!-- get_partners -->
     <record id="demo_endpoint_get_partners" model="endpoint.endpoint">
@@ -16,9 +14,12 @@
         >Return partner records matching the given domain.</field>
         <field name="json2_model_id" ref="base.model_res_partner" />
         <field name="json2_method">search_read</field>
-        <field
-            name="json2_allowed_fields"
-        >name,email,phone,city,country_id.name,write_date</field>
+        <field name="json2_response_fields">name
+email
+phone
+city
+country_id.name country
+write_date</field>
         <field name="json2_default_domain">[["active", "=", true]]</field>
     </record>
     <record id="demo_param_get_partners_domain" model="endpoint.json2.param">
@@ -58,7 +59,8 @@
             name="json2_description"
         >Update a partner's name by ref (code snippet example).</field>
         <field name="json2_model_id" ref="base.model_res_partner" />
-        <field name="json2_allowed_fields">ref,name</field>
+        <field name="json2_response_fields">ref
+name</field>
         <field name="json2_code_snippet">
 partner = Model.search([("ref", "=", params["ref"])], limit=1)
 if not partner:
@@ -95,7 +97,8 @@ result = {"ref": partner.ref, "name": partner.name}
             name="json2_description"
         >Create a portal user with the given name and email (code snippet example).</field>
         <field name="json2_model_id" ref="base.model_res_users" />
-        <field name="json2_allowed_fields">login,name</field>
+        <field name="json2_response_fields">login
+name</field>
         <field name="json2_code_snippet">
 existing = Model.search([("login", "=", params["email"])], limit=1)
 if existing:

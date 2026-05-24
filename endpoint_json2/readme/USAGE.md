@@ -1,4 +1,4 @@
-### Calling an Endpoint
+## Calling an Endpoint
 
 Send a POST request with a JSON body to the endpoint's route:
 
@@ -9,10 +9,10 @@ curl -X POST https://your-odoo.com/json2/contacts/get_partners \
   -d '{"domain": [["is_company", "=", true]], "limit": 10}'
 ```
 
-### Incremental Sync
+## Incremental Sync
 
 To fetch only records modified since a given timestamp, include a
-`write_date` filter in the domain and add `write_date` to the allowed
+`write_date` filter in the domain and add `write_date` to the response
 fields:
 
 ```json
@@ -22,7 +22,7 @@ fields:
 Use the latest `write_date` from the response as the starting point for
 the next sync to avoid clock drift between client and server.
 
-### API Documentation
+## API Documentation
 
 Auto-generated documentation for all JSON2 endpoints is available at
 `/json2/doc`.

@@ -1,1 +1,2 @@
-from . import endpoint_json2_param, endpoint_mixin
+from . import endpoint_json2_param
+from . import endpoint_mixin

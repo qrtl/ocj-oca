@@ -1,6 +1,4 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<!-- Copyright 2026 Quartile (https://www.quartile.co)
-     License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl). -->
 <odoo>
     <record id="endpoint_endpoint_json2_form_view" model="ir.ui.view">
         <field name="name">endpoint.endpoint.json2.form</field>
@@ -22,28 +20,20 @@
                     invisible="exec_mode != 'json2'"
                 >
                     <group>
-                        <group>
+                        <group string="Target">
                             <field
                                 name="json2_model_id"
                                 required="exec_mode == 'json2'"
                             />
                             <field name="json2_model_name" invisible="1" />
-                            <field name="json2_group_ids" widget="many2many_tags" />
-                        </group>
-                        <group>
-                            <field name="json2_allowed_fields" />
                             <field name="json2_default_domain" />
+                        </group>
+                        <group string="Access">
+                            <field name="json2_group_ids" widget="many2many_tags" />
                             <field name="json2_description" />
                         </group>
                     </group>
-                    <group>
-                        <field name="json2_method" invisible="json2_code_snippet" />
-                        <field
-                            name="json2_code_snippet"
-                            widget="code"
-                            invisible="json2_method"
-                        />
-                    </group>
+                    <separator string="Parameters" />
                     <field name="json2_param_ids">
                         <list editable="bottom">
                             <field name="sequence" widget="handle" />
@@ -54,6 +44,19 @@
                             <field name="default_value" />
                         </list>
                     </field>
+                    <group>
+                        <field name="json2_method" invisible="json2_code_snippet" />
+                        <field
+                            name="json2_code_snippet"
+                            widget="code"
+                            invisible="json2_method"
+                        />
+                    </group>
+                    <group>
+                        <group>
+                            <field name="json2_response_fields" />
+                        </group>
+                    </group>
                 </page>
             </page>
         </field>

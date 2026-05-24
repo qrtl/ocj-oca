@@ -1,1 +1,2 @@
-from . import test_endpoint_json2, test_endpoint_json2_controller
+from . import test_endpoint_json2
+from . import test_endpoint_json2_controller

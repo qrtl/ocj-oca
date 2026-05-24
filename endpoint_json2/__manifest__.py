@@ -1,11 +1,11 @@
 # Copyright 2026 Quartile (https://www.quartile.co)
-# License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl).
+# License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 {
     "name": "Endpoint JSON2",
-    "summary": "Declarative JSON2-RPC endpoints on the endpoint stack.",
+    "summary": "Declarative JSON2-RPC endpoints on the endpoint stack",
     "version": "19.0.1.0.0",
     "license": "LGPL-3",
-    "development_status": "Beta",
+    "development_status": "Alpha",
     "author": "Quartile, Odoo Community Association (OCA)",
     "website": "https://github.com/OCA/web-api",
     "category": "Technical",
@@ -16,4 +16,5 @@
     ],
     "demo": ["demo/endpoint_json2_demo.xml"],
     "installable": True,
+    "maintainers": ["yostashiro", "aungkokolin1997"],
 }

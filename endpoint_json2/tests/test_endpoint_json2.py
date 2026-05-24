@@ -1,5 +1,5 @@
 # Copyright 2026 Quartile (https://www.quartile.co)
-# License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl).
+# License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
 from odoo.exceptions import ValidationError
 
@@ -9,9 +9,9 @@ from .common import CommonEndpointJson2
 class TestEndpointJson2(CommonEndpointJson2):
     def test_create_endpoint(self):
         self.assertEqual(self.endpoint.json2_model_name, "res.partner")
-        self.assertEqual(
-            self.endpoint._json2_get_allowed_field_list(), ["name", "email"]
-        )
+        fields, aliases = self.endpoint._json2_parse_response_fields()
+        self.assertEqual(fields, ["name", "email"])
+        self.assertEqual(aliases, {})
 
     def test_route_auto_computed(self):
         self.assertEqual(self.endpoint.route, "/json2/contacts/get_partners")
@@ -39,13 +39,15 @@ class TestEndpointJson2(CommonEndpointJson2):
         with self.assertRaises(ValidationError):
             self.endpoint.json2_default_domain = '{"key": "value"}'
 
-    def test_invalid_allowed_fields(self):
+    def test_invalid_response_fields(self):
         with self.assertRaises(ValidationError):
-            self.endpoint.json2_allowed_fields = "name,nonexistent_field"
+            self.endpoint.json2_response_fields = "name\nnonexistent_field"
 
-    def test_empty_allowed_fields(self):
-        self.endpoint.json2_allowed_fields = False
-        self.assertEqual(self.endpoint._json2_get_allowed_field_list(), [])
+    def test_empty_response_fields(self):
+        self.endpoint.json2_response_fields = False
+        fields, aliases = self.endpoint._json2_parse_response_fields()
+        self.assertEqual(fields, [])
+        self.assertEqual(aliases, {})
 
     def test_param_creation(self):
         param = self.env["endpoint.json2.param"].create(
@@ -75,6 +77,8 @@ class TestEndpointJson2(CommonEndpointJson2):
         result = {"name": "Test", "email": "a@b.c", "phone": "123"}
         filtered = self.endpoint._json2_filter_result(result, ["name", "email"])
         self.assertEqual(filtered, {"name": "Test", "email": "a@b.c"})
+        aliased = self.endpoint._json2_apply_aliases(filtered, {"email": "mail"})
+        self.assertEqual(aliased, {"name": "Test", "mail": "a@b.c"})
 
     def test_filter_result_list(self):
         result = [
@@ -83,9 +87,12 @@ class TestEndpointJson2(CommonEndpointJson2):
         ]
         filtered = self.endpoint._json2_filter_result(result, ["name"])
         self.assertEqual(filtered, [{"name": "A"}, {"name": "B"}])
+        aliased = self.endpoint._json2_apply_aliases(filtered, {"name": "label"})
+        self.assertEqual(aliased, [{"label": "A"}, {"label": "B"}])
 
     def test_filter_result_passthrough(self):
         self.assertEqual(self.endpoint._json2_filter_result(42, ["name"]), 42)
+        self.assertEqual(self.endpoint._json2_apply_aliases(42, {"name": "n"}), 42)
 
     def test_filter_result_no_filter(self):
         result = {"name": "Test", "phone": "123"}
@@ -150,24 +157,23 @@ class TestEndpointJson2(CommonEndpointJson2):
         )
         self.assertTrue(ep.json2_code_snippet)
 
-    def test_dotted_allowed_fields_valid(self):
-        self.endpoint.json2_allowed_fields = "name,country_id.name"
-        self.assertEqual(
-            self.endpoint._json2_get_allowed_field_list(),
-            ["name", "country_id.name"],
-        )
+    def test_dotted_response_fields_valid(self):
+        self.endpoint.json2_response_fields = "name\ncountry_id.name country"
+        fields, aliases = self.endpoint._json2_parse_response_fields()
+        self.assertEqual(fields, ["name", "country_id.name"])
+        self.assertEqual(aliases, {"country_id.name": "country"})
 
-    def test_dotted_allowed_fields_invalid_base(self):
+    def test_dotted_response_fields_invalid_base(self):
         with self.assertRaises(ValidationError):
-            self.endpoint.json2_allowed_fields = "name,nonexistent_id.name"
+            self.endpoint.json2_response_fields = "name\nnonexistent_id.name"
 
-    def test_dotted_allowed_fields_non_m2o(self):
+    def test_dotted_response_fields_non_m2o(self):
         with self.assertRaises(ValidationError):
-            self.endpoint.json2_allowed_fields = "name,email.something"
+            self.endpoint.json2_response_fields = "name\nemail.something"
 
-    def test_dotted_allowed_fields_invalid_sub(self):
+    def test_dotted_response_fields_invalid_sub(self):
         with self.assertRaises(ValidationError):
-            self.endpoint.json2_allowed_fields = "name,country_id.nonexistent"
+            self.endpoint.json2_response_fields = "name\ncountry_id.nonexistent"
 
     def test_parse_dotted_fields(self):
         allowed = ["name", "country_id.name", "country_id.code", "email"]
@@ -188,12 +194,10 @@ class TestEndpointJson2(CommonEndpointJson2):
         self.assertFalse(result[1]["country_id.name"])
         self.assertFalse(result[1]["country_id.code"])
 
-    def test_dotted_allowed_fields_m2m_valid(self):
-        self.endpoint.json2_allowed_fields = "name,category_id.name"
-        self.assertEqual(
-            self.endpoint._json2_get_allowed_field_list(),
-            ["name", "category_id.name"],
-        )
+    def test_dotted_response_fields_m2m_valid(self):
+        self.endpoint.json2_response_fields = "name\ncategory_id.name"
+        fields, _aliases = self.endpoint._json2_parse_response_fields()
+        self.assertEqual(fields, ["name", "category_id.name"])
 
     def test_resolve_dotted_fields_x2many(self):
         tags = self.env["res.partner.category"].search([], limit=2)
@@ -221,3 +225,7 @@ class TestEndpointJson2(CommonEndpointJson2):
         )
         self.assertEqual(filtered, {"name": "Test", "country_id.name": "Japan"})
         self.assertNotIn("country_id", filtered)
+        aliased = self.endpoint._json2_apply_aliases(
+            filtered, {"country_id.name": "country"}
+        )
+        self.assertEqual(aliased, {"name": "Test", "country": "Japan"})
