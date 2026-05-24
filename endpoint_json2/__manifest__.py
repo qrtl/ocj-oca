@@ -12,7 +12,7 @@
     "depends": ["endpoint"],
     "data": [
         "security/ir.model.access.csv",
-        "views/endpoint_json2_view.xml",
+        "views/endpoint_views.xml",
     ],
     "demo": ["demo/endpoint_json2_demo.xml"],
     "installable": True,
