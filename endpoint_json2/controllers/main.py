@@ -13,8 +13,7 @@ class EndpointJson2DocController(http.Controller):
         all_endpoints = request.env["endpoint.endpoint"].sudo().search(domain)
         user = request.env.user
         return all_endpoints.filtered(
-            lambda ep: not ep.json2_group_ids
-            or (ep.json2_group_ids & user.all_group_ids)
+            lambda ep: ep.json2_group_ids & user.all_group_ids
         )
 
     def _endpoint_to_doc(self, endpoint):

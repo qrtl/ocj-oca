@@ -75,17 +75,24 @@ class EndpointJson2Param(models.Model):
             )
         return value
 
-    @api.constrains("default_value")
+    @api.constrains("default_value", "param_type")
     def _check_default_value(self):
         for rec in self:
             if not rec.default_value:
                 continue
             try:
-                json.loads(rec.default_value)
+                parsed = json.loads(rec.default_value)
             except json.JSONDecodeError:
                 raise ValidationError(
                     self.env._(
                         "Default value must be valid JSON: %(value)s",
                         value=rec.default_value,
+                    )
+                ) from None
+            if not rec._check_param_type(parsed):
+                raise ValidationError(
+                    self.env._(
+                        "Default value type mismatch: expected %(type)s",
+                        type=rec.param_type,
                     )
                 ) from None

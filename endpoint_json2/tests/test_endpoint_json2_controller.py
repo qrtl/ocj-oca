@@ -35,6 +35,7 @@ class TestEndpointJson2Controller(HttpCase):
         )
         cls.bearer = {"Authorization": f"Bearer {key}"}
         cls.model_partner = cls.env["ir.model"]._get("res.partner")
+        cls.group_user = cls.env.ref("base.group_user")
         cls.endpoint = cls._create_endpoint(
             {
                 "name": "get_partners",
@@ -85,6 +86,7 @@ class TestEndpointJson2Controller(HttpCase):
             "request_content_type": "application/json",
             "auth_type": "bearer",
             "json2_model_id": cls.model_partner.id,
+            "json2_group_ids": [Command.link(cls.group_user.id)],
         }
         defaults.update(vals)
         defaults.setdefault(
@@ -251,6 +253,20 @@ class TestEndpointJson2Controller(HttpCase):
         endpoint._handle_registry_sync()
         res = self._call("test", "restricted")
         self.assertEqual(res.status_code, 403)
+
+    def test_dispatch_group_access_granted(self):
+        group = self.env["res.groups"].create({"name": "Allowed API Group"})
+        self.api_user.groups_id = [Command.link(group.id)]
+        endpoint = self._create_endpoint(
+            {
+                "name": "allowed",
+                "json2_method": "search_read",
+                "json2_group_ids": [Command.link(group.id)],
+            }
+        )
+        endpoint._handle_registry_sync()
+        res = self._call("test", "allowed")
+        self.assertEqual(res.status_code, 200)
 
     def test_doc(self):
         res = self._call_doc()

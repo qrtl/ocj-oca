@@ -21,6 +21,7 @@ city
 country_id.name country
 write_date</field>
         <field name="json2_default_domain">[["active", "=", true]]</field>
+        <field name="json2_group_ids" eval="[Command.link(ref('base.group_user'))]" />
     </record>
     <record id="demo_param_get_partners_domain" model="endpoint.json2.param">
         <field name="endpoint_id" ref="demo_endpoint_get_partners" />
@@ -68,6 +69,7 @@ if not partner:
 partner.write({"name": params["new_name"]})
 result = {"ref": partner.ref, "name": partner.name}
 </field>
+        <field name="json2_group_ids" eval="[Command.link(ref('base.group_user'))]" />
     </record>
     <record id="demo_param_update_partner_ref" model="endpoint.json2.param">
         <field name="endpoint_id" ref="demo_endpoint_update_partner_name" />
@@ -115,6 +117,7 @@ user = Model.create({
 })
 result = {"id": user.id, "login": user.login, "partner_id": partner.id}
 </field>
+        <field name="json2_group_ids" eval="[Command.link(ref('base.group_user'))]" />
     </record>
     <record id="demo_param_create_portal_user_name" model="endpoint.json2.param">
         <field name="endpoint_id" ref="demo_endpoint_create_portal_user" />

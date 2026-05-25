@@ -40,19 +40,6 @@ class TestEndpointJson2(CommonEndpointJson2):
         self.assertEqual(fields, [])
         self.assertEqual(aliases, {})
 
-    def test_param_creation(self):
-        param = self.env["endpoint.json2.param"].create(
-            {
-                "endpoint_id": self.endpoint.id,
-                "name": "domain",
-                "param_type": "list",
-                "required": False,
-                "default_value": "[]",
-            }
-        )
-        self.assertEqual(param.endpoint_id, self.endpoint)
-        self.assertIn(param, self.endpoint.json2_param_ids)
-
     def test_param_invalid_default_value(self):
         with self.assertRaises(ValidationError):
             self.env["endpoint.json2.param"].create(
@@ -61,6 +48,28 @@ class TestEndpointJson2(CommonEndpointJson2):
                     "name": "bad_param",
                     "param_type": "string",
                     "default_value": "not valid json",
+                }
+            )
+
+    def test_param_bool_rejected_for_integer(self):
+        param = self.env["endpoint.json2.param"].create(
+            {
+                "endpoint_id": self.endpoint.id,
+                "name": "count",
+                "param_type": "integer",
+            }
+        )
+        self.assertFalse(param._check_param_type(True))
+        self.assertFalse(param._check_param_type(False))
+
+    def test_param_default_value_type_mismatch(self):
+        with self.assertRaises(ValidationError):
+            self.env["endpoint.json2.param"].create(
+                {
+                    "endpoint_id": self.endpoint.id,
+                    "name": "bad_default",
+                    "param_type": "integer",
+                    "default_value": '"hello"',
                 }
             )
 

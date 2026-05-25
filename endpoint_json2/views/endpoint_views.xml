@@ -36,7 +36,11 @@
                         </group>
                         <group string="Access">
                             <field name="json2_doc_url" widget="url" />
-                            <field name="json2_group_ids" widget="many2many_tags" />
+                            <field
+                                name="json2_group_ids"
+                                widget="many2many_tags"
+                                required="exec_mode == 'json2'"
+                            />
                             <field name="json2_description" />
                         </group>
                     </group>

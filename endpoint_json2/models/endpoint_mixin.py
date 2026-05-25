@@ -56,8 +56,7 @@ class EndpointMixin(models.AbstractModel):
     json2_group_ids = fields.Many2many(
         "res.groups",
         string="Allowed Groups",
-        help="Groups allowed to call this endpoint. "
-        "Leave empty to allow any authenticated API user.",
+        help="Groups allowed to call this endpoint.",
     )
     json2_param_ids = fields.One2many(
         "endpoint.json2.param",
@@ -184,8 +183,6 @@ class EndpointMixin(models.AbstractModel):
                 )
 
     def _json2_check_group_access(self, request):
-        if not self.json2_group_ids:
-            return
         if not (self.json2_group_ids & request.env.user.all_group_ids):
             raise werkzeug.exceptions.Forbidden(
                 "User does not belong to any allowed group"

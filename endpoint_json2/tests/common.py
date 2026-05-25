@@ -1,6 +1,7 @@
 # Copyright 2026 Quartile (https://www.quartile.co)
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
+from odoo import Command
 from odoo.tests.common import TransactionCase, tagged
 
 
@@ -10,6 +11,7 @@ class CommonEndpointJson2(TransactionCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.model_partner = cls.env["ir.model"]._get("res.partner")
+        cls.group_user = cls.env.ref("base.group_user")
         cls.endpoint = cls._create_endpoint(
             {
                 "name": "get_partners",
@@ -18,6 +20,7 @@ class CommonEndpointJson2(TransactionCase):
                 "json2_method": "search_read",
                 "json2_response_fields": "name\nemail",
                 "json2_default_domain": "[]",
+                "json2_group_ids": [Command.link(cls.group_user.id)],
             }
         )
 
@@ -32,6 +35,7 @@ class CommonEndpointJson2(TransactionCase):
             "request_content_type": "application/json",
             "auth_type": "bearer",
             "json2_model_id": cls.model_partner.id,
+            "json2_group_ids": [Command.link(cls.group_user.id)],
         }
         defaults.update(vals)
         defaults.setdefault(
