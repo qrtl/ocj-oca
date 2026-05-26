@@ -256,7 +256,7 @@ class TestEndpointJson2Controller(HttpCase):
 
     def test_dispatch_group_access_granted(self):
         group = self.env["res.groups"].create({"name": "Allowed API Group"})
-        self.api_user.groups_id = [Command.link(group.id)]
+        self.api_user.group_ids = [Command.link(group.id)]
         endpoint = self._create_endpoint(
             {
                 "name": "allowed",
