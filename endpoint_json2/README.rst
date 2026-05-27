@@ -1,3 +1,7 @@
+.. image:: https://odoo-community.org/readme-banner-image
+   :target: https://odoo-community.org/get-involved?utm_source=readme
+   :alt: Odoo Community Association
+
 ==============
 Endpoint JSON2
 ==============
@@ -13,7 +17,7 @@ Endpoint JSON2
 .. |badge1| image:: https://img.shields.io/badge/maturity-Alpha-red.png
     :target: https://odoo-community.org/page/development-status
     :alt: Alpha
-.. |badge2| image:: https://img.shields.io/badge/licence-LGPL--3-blue.png
+.. |badge2| image:: https://img.shields.io/badge/license-LGPL--3-blue.png
     :target: http://www.gnu.org/licenses/lgpl-3.0-standalone.html
     :alt: License: LGPL-3
 .. |badge3| image:: https://img.shields.io/badge/github-OCA%2Fweb--api-lightgray.png?logo=github
@@ -29,9 +33,10 @@ Endpoint JSON2
 |badge1| |badge2| |badge3| |badge4| |badge5|
 
 Adds ``exec_mode="json2"`` to the endpoint framework, enabling
-declarative JSON-2 API endpoint configuration. Instead of writing code
-snippets, select a model, method, and parameters — the module handles
-dispatch, parameter validation, access control, and result filtering.
+declarative JSON-2 API endpoint configuration. Select a model, method,
+and parameters — the module handles dispatch, parameter validation,
+access control, and result filtering. A code snippet can be used as an
+alternative to a model method for quick, ad-hoc logic.
 
 Also provides auto-generated API documentation endpoints at
 ``/json2/doc``.
@@ -55,6 +60,13 @@ Go to *Settings > Technical > Endpoints* and create a new endpoint with
 Basic Setup
 -----------
 
+-  **Route Group** and **Name**: Together these determine the endpoint
+   URL, which is automatically computed as
+   ``/json2/{route_group}/{name}``. For example, a route group
+   ``contacts`` with name ``get_partners`` produces
+   ``/json2/contacts/get_partners``. The route group also organizes
+   endpoints in the API documentation at ``/json2/doc/{route_group}``.
+
 -  **Model**: The Odoo model to operate on (e.g. ``res.partner``).
 
 -  **Method**: A public model method (e.g. ``search_read``).
@@ -62,9 +74,9 @@ Basic Setup
    two fields are mutually exclusive.
 
 -  **Response Fields**: One field per line. Optionally follow with an
-   alias to rename the key in the response. Use dotted notation for
-   relational fields (Many2one, Many2many, One2many). Leave empty to
-   return all fields. Example:
+   alias to rename the key in the response. Use dotted notation (one
+   level) for relational fields (Many2one, Many2many, One2many). Leave
+   empty to return all fields. Example:
 
    ::
 
@@ -86,28 +98,28 @@ All endpoint execution is wrapped in ``sudo()``, allowing API users to
 operate with minimal Odoo privileges. Access is controlled at two
 levels:
 
--  **Auth Type**: Set to **Bearer** to require an API key for
-   authentication.
+-  **Auth Type**: Select the authentication method for the endpoint
+   (e.g. **Bearer** for API key authentication).
 -  **Allowed Groups**: Restrict endpoint access to specific user groups.
    Create integration-specific groups (e.g. "Hospital System", "WMS")
    and assign them to the corresponding API users. Each endpoint
    declares which groups may call it. Leave empty to allow any
    authenticated user.
--  **Response Fields**: Controls which data fields are included in the
-   response, regardless of what the underlying model method returns.
 
 Code Snippets
 -------------
 
-For operations that go beyond a single model method call, use a code
-snippet instead of the method field. Available variables:
+As an alternative to a model method, a code snippet can be used for
+quick, ad-hoc logic. Available variables:
 
 -  ``Model``: The target model (with ``sudo()``).
 -  ``params``: Validated parameters from the request.
 -  ``env``: The Odoo environment.
 -  ``Command``: Odoo's ``Command`` helper for relational field writes.
+-  ``json``: Safe JSON module for serialization.
 -  ``exceptions``: Werkzeug exceptions (``BadRequest``, ``NotFound``,
    etc.).
+-  ``log``: Log messages to the ``ir.logging`` table.
 
 The snippet must set a ``result`` variable with the response data.
 
@@ -117,7 +129,8 @@ Usage
 Calling an Endpoint
 -------------------
 
-Send a POST request with a JSON body to the endpoint's route:
+Send a POST request with a JSON body to the endpoint's route. The
+example below uses Bearer authentication with an API key:
 
 .. code:: bash
 
@@ -126,25 +139,13 @@ Send a POST request with a JSON body to the endpoint's route:
      -H "Authorization: Bearer YOUR_API_KEY" \
      -d '{"domain": [["is_company", "=", true]], "limit": 10}'
 
-Incremental Sync
-----------------
-
-To fetch only records modified since a given timestamp, include a
-``write_date`` filter in the domain and add ``write_date`` to the
-response fields:
-
-.. code:: json
-
-   {"domain": [["write_date", ">=", "2026-05-23 00:00:00"]]}
-
-Use the latest ``write_date`` from the response as the starting point
-for the next sync to avoid clock drift between client and server.
-
 API Documentation
 -----------------
 
-Auto-generated documentation for all JSON2 endpoints is available at
-``/json2/doc``.
+Auto-generated documentation for all JSON-2 endpoints is available at
+``/json2/doc``, grouped by route group. Each endpoint's visibility
+respects the **Allowed Groups** setting — users only see endpoints they
+have access to. Filter by route group with ``/json2/doc/{route_group}``.
 
 Bug Tracker
 ===========

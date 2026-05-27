@@ -13,14 +13,6 @@ from odoo.tests.common import HttpCase
 CT_JSON = {"Content-Type": "application/json"}
 
 
-# Intentionally not tagged @tagged("-at_install", "post_install").
-# When the post_install suite contains any HttpCase, Odoo pregenerates all
-# asset bundles (see odoo/service/server.py:_pregenerate_assets_bundles), and
-# compiling web.assets_frontend currently emits a WARNING for an undefined
-# SCSS variable ($black) coming from Odoo core. The OCA CI counts that
-# warning as a failure cause. Running this HttpCase at_install — matching the
-# pattern in endpoint_auth_api_key.tests.test_endpoint_controller — avoids
-# pulling pregeneration into the run.
 @skipIf(os.getenv("SKIP_HTTP_CASE"), "HttpCase skipped")
 class TestEndpointJson2Controller(HttpCase):
     @classmethod

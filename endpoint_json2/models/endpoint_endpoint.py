@@ -13,8 +13,8 @@ from odoo.tools.safe_eval import json as safe_json
 from odoo.tools.safe_eval import safe_eval, wrap_module
 
 
-class EndpointMixin(models.AbstractModel):
-    _inherit = "endpoint.mixin"
+class EndpointEndpoint(models.Model):
+    _inherit = "endpoint.endpoint"
 
     json2_model_id = fields.Many2one(
         "ir.model",
