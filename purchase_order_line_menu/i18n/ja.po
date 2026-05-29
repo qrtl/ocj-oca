@@ -31,7 +31,7 @@ msgstr "キャンセル済"
 msgid ""
 "Depicts the date within which the Quotation should be confirmed and "
 "converted into a purchase order."
-msgstr "見積りを確認して販売オーダに更新しないといけない期日を表示します。"
+msgstr "見積を確認して購買オーダにすべき期日を示します。"
 
 #. module: purchase_order_line_menu
 #: model:ir.model.fields,field_description:purchase_order_line_menu.field_purchase_order_line__display_name
