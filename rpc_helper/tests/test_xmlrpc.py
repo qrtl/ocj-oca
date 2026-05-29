@@ -10,7 +10,14 @@ from odoo.tests import common
 from odoo.tools import mute_logger
 
 
-@common.tagged("post_install", "-at_install")
+# Intentionally omitting @tagged("post_install", "-at_install").
+# When the post_install suite contains any HttpCase, Odoo pregenerates
+# all asset bundles (ir_qweb._pregenerate_assets_bundles, called from
+# odoo/service/server.py). Compiling web.assets_frontend currently emits
+# a WARNING about an undefined SCSS variable ($black) from Odoo core,
+# which fails our CI.
+# TODO: investigate why this does not surface in the upstream OCA repo.
+# @common.tagged("post_install", "-at_install")
 class TestXMLRPC(common.HttpCase):
     @classmethod
     def setUpClass(cls):
