@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <record id="product_category_form_view" model="ir.ui.view">
+        <field name="model">product.category</field>
+        <field name="inherit_id" ref="product.product_category_form_view" />
+        <field name="arch" type="xml">
+            <group name="first" position="after">
+                <group name="auto_bill" string="Auto Bill on Receipt">
+                    <field name="auto_bill_on_receipt" />
+                </group>
+            </group>
+        </field>
+    </record>
+</odoo>
