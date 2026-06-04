@@ -2,6 +2,7 @@
 # @author: Simone Orsi <simone.orsi@camptocamp.com>
 # License LGPL-3.0 or later (http://www.gnu.org/licenses/lgpl).
 from contextlib import contextmanager
+from unittest.mock import patch
 
 from odoo import api, modules
 from odoo.tests import common
@@ -49,6 +50,33 @@ class TestEndpoint(CommonEndpoint):
         self.assertTrue(first_hash)
         new_route.route += "/new"
         self.assertNotEqual(new_route.endpoint_hash, first_hash)
+
+    def test_route_field_precomputed(self):
+        """``route`` is required + computed; precompute=True makes the compute
+        run before INSERT so downstream modules that derive ``route`` from
+        other fields don't get a "Missing required value" error at create
+        time.
+
+        Self-contained verification: patch ``_compute_route`` to derive a
+        deterministic value (simulating what a downstream override would do),
+        then ``create()`` a record without passing ``route``. If precompute
+        fires before INSERT, the derived value lands on the record. Without
+        precompute, INSERT would fail before ``_compute_route`` runs.
+        """
+        Model = type(self.env["endpoint.route.handler.tool"])
+
+        def _fake_compute_route(self):
+            for rec in self:
+                rec.route = "/precompute/probe"
+
+        with patch.object(Model, "_compute_route", _fake_compute_route):
+            rec = self.env["endpoint.route.handler.tool"].create(
+                {
+                    "name": "Precompute test",
+                    "request_method": "GET",
+                }
+            )
+            self.assertEqual(rec.route, "/precompute/probe")
 
     def test_auth_type_routing_info(self):
         for auth_type in ("public", "user_endpoint", "bearer"):
