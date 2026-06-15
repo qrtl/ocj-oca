@@ -376,38 +376,70 @@ ul.auto-toc {
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! -->
 <p><a class="reference external image-reference" href="https://odoo-community.org/page/development-status"><img alt="Beta" src="https://img.shields.io/badge/maturity-Beta-yellow.png" /></a> <a class="reference external image-reference" href="http://www.gnu.org/licenses/agpl-3.0-standalone.html"><img alt="License: AGPL-3" src="https://img.shields.io/badge/license-AGPL--3-blue.png" /></a> <a class="reference external image-reference" href="https://github.com/OCA/purchase-workflow/tree/19.0/purchase_auto_bill_on_receipt"><img alt="OCA/purchase-workflow" src="https://img.shields.io/badge/github-OCA%2Fpurchase--workflow-lightgray.png?logo=github" /></a> <a class="reference external image-reference" href="https://translation.odoo-community.org/projects/purchase-workflow-19-0/purchase-workflow-19-0-purchase_auto_bill_on_receipt"><img alt="Translate me on Weblate" src="https://img.shields.io/badge/weblate-Translate%20me-F47D42.png" /></a> <a class="reference external image-reference" href="https://runboat.odoo-community.org/builds?repo=OCA/purchase-workflow&amp;target_branch=19.0"><img alt="Try me on Runboat" src="https://img.shields.io/badge/runboat-Try%20me-875A7B.png" /></a></p>
 <p>This module automatically creates and posts a Vendor Bill when a
-purchase receipt is validated.</p>
+purchase receipt is validated. It also creates and posts a Credit Note
+when a purchase return is validated, provided the return lines are
+marked as <em>Update quantities on SO/PO</em> in the return wizard.</p>
 <p><strong>Table of contents</strong></p>
 <div class="contents local topic" id="contents">
 <ul class="simple">
 <li><a class="reference internal" href="#configuration" id="toc-entry-1">Configuration</a></li>
-<li><a class="reference internal" href="#bug-tracker" id="toc-entry-2">Bug Tracker</a></li>
-<li><a class="reference internal" href="#credits" id="toc-entry-3">Credits</a><ul>
-<li><a class="reference internal" href="#authors" id="toc-entry-4">Authors</a></li>
-<li><a class="reference internal" href="#contributors" id="toc-entry-5">Contributors</a></li>
-<li><a class="reference internal" href="#maintainers" id="toc-entry-6">Maintainers</a></li>
+<li><a class="reference internal" href="#usage" id="toc-entry-2">Usage</a></li>
+<li><a class="reference internal" href="#bug-tracker" id="toc-entry-3">Bug Tracker</a></li>
+<li><a class="reference internal" href="#credits" id="toc-entry-4">Credits</a><ul>
+<li><a class="reference internal" href="#authors" id="toc-entry-5">Authors</a></li>
+<li><a class="reference internal" href="#contributors" id="toc-entry-6">Contributors</a></li>
+<li><a class="reference internal" href="#maintainers" id="toc-entry-7">Maintainers</a></li>
 </ul>
 </li>
 </ul>
 </div>
 <div class="section" id="configuration">
 <h2><a class="toc-backref" href="#toc-entry-1">Configuration</a></h2>
-<p>Three configuration levels control whether a Purchase Order line is
-auto-billed when the related receipt is validated. They are evaluated
-per line at receipt time:</p>
+<p>Whether a Purchase Order is auto-billed when its receipt is validated is
+resolved from two configuration levels, plus a per-order kill switch:</p>
 <ol class="arabic simple">
-<li><strong>Product Category</strong> → <em>Auto Bill on Receipt</em> (boolean). Sets the
-baseline for all products in the category.</li>
-<li><strong>Product</strong> → <em>Auto Bill on Receipt</em> (selection: <em>Auto</em> / <em>No Auto</em> /
-empty). Leave empty to inherit from the product category. <em>Auto</em> or
-<em>No Auto</em> overrides the category setting for this product.</li>
+<li><strong>Company</strong> → <em>Settings &gt; Purchase &gt; Invoicing &gt; Auto Bill on
+Receipt</em> (boolean). Sets the default for all vendors.</li>
+<li><strong>Vendor</strong> → <em>Auto Bill on Receipt</em> (selection: <em>Auto</em> / <em>No Auto</em> /
+empty), on the vendor form. Leave empty to inherit from the company.
+<em>Auto</em> or <em>No Auto</em> overrides the company default for this vendor.</li>
 <li><strong>Purchase Order</strong> → <em>Block Auto Bill</em> (boolean, on the <em>Other
-Information</em> tab). When ticked, suppresses auto-billing for the whole
-order regardless of product or category settings.</li>
+Information</em> tab). When ticked, suppresses auto-billing for this
+order regardless of the company or vendor settings.</li>
 </ol>
+<p>The bill date uses the timezone set on the company’s contact. To set it,
+install the
+<a class="reference external" href="https://github.com/OCA/partner-contact/tree/19.0/partner_tz">partner_tz</a>
+module and configure the timezone on the company’s contact.</p>
+</div>
+<div class="section" id="usage">
+<h2><a class="toc-backref" href="#toc-entry-2">Usage</a></h2>
+<p>Once auto-billing is configured, validate a purchase receipt as usual. A
+Vendor Bill is automatically created and posted shortly after via the
+scheduled action. The bill only includes PO lines whose product bill
+control policy is <em>On received quantities</em> and that have a positive
+quantity to invoice.</p>
+<p><strong>Returns / Credit Notes:</strong> When a return is validated and its return
+lines have <em>Update quantities on SO/PO</em> enabled in the return wizard, a
+Credit Note is automatically created and posted for the returned
+quantities. The credit note is only created when a Vendor Bill has
+already been posted (i.e. the PO line has a negative <em>Quantity to
+Invoice</em>).</p>
+<p>The bill/credit note date is the receipt/return validation date
+converted to the company’s timezone (falls back to UTC when no timezone
+is set).</p>
+<p>If creation or posting fails, the error is logged in the Purchase Order
+chatter and a To-Do activity is scheduled for follow-up.</p>
+<p><strong>Case 1 — Cancelling an auto-bill:</strong> An auto-posted bill can be
+cancelled like any other Vendor Bill. However, the module will not
+automatically create a new bill for the same receipt.</p>
+<p><strong>Case 2 — Reprocessing an auto-bill:</strong> This is not supported. Once the
+scheduled action processes a receipt or return, it will not be picked up
+again. To bill or refund the same quantities, create the document
+manually from the Purchase Order.</p>
 </div>
 <div class="section" id="bug-tracker">
-<h2><a class="toc-backref" href="#toc-entry-2">Bug Tracker</a></h2>
+<h2><a class="toc-backref" href="#toc-entry-3">Bug Tracker</a></h2>
 <p>Bugs are tracked on <a class="reference external" href="https://github.com/OCA/purchase-workflow/issues">GitHub Issues</a>.
 In case of trouble, please check there if your issue has already been reported.
 If you spotted it first, help us to smash it by providing a detailed and welcomed
@@ -415,15 +447,15 @@ If you spotted it first, help us to smash it by providing a detailed and welcome
 <p>Do not contact contributors directly about support or help with technical issues.</p>
 </div>
 <div class="section" id="credits">
-<h2><a class="toc-backref" href="#toc-entry-3">Credits</a></h2>
+<h2><a class="toc-backref" href="#toc-entry-4">Credits</a></h2>
 <div class="section" id="authors">
-<h3><a class="toc-backref" href="#toc-entry-4">Authors</a></h3>
+<h3><a class="toc-backref" href="#toc-entry-5">Authors</a></h3>
 <ul class="simple">
 <li>Quartile</li>
 </ul>
 </div>
 <div class="section" id="contributors">
-<h3><a class="toc-backref" href="#toc-entry-5">Contributors</a></h3>
+<h3><a class="toc-backref" href="#toc-entry-6">Contributors</a></h3>
 <ul class="simple">
 <li><a class="reference external" href="https://www.quartile.co">Quartile</a>:<ul>
 <li>Aung Ko Ko Lin</li>
@@ -433,7 +465,7 @@ If you spotted it first, help us to smash it by providing a detailed and welcome
 </ul>
 </div>
 <div class="section" id="maintainers">
-<h3><a class="toc-backref" href="#toc-entry-6">Maintainers</a></h3>
+<h3><a class="toc-backref" href="#toc-entry-7">Maintainers</a></h3>
 <p>This module is maintained by the OCA.</p>
 <a class="reference external image-reference" href="https://odoo-community.org">
 <img alt="Odoo Community Association" src="https://odoo-community.org/logo.png" />

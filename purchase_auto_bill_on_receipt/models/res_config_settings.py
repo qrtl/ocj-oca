@@ -4,10 +4,10 @@
 from odoo import fields, models
 
 
-class ProductCategory(models.Model):
-    _inherit = "product.category"
+class ResConfigSettings(models.TransientModel):
+    _inherit = "res.config.settings"
 
     auto_bill_on_receipt = fields.Boolean(
-        help="When enabled, products in this category will automatically "
-        "generate a Vendor Bill when goods are received.",
+        related="company_id.auto_bill_on_receipt",
+        readonly=False,
     )

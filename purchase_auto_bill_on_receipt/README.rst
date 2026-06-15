@@ -33,7 +33,9 @@ Purchase Auto Bill on Receipt
 |badge1| |badge2| |badge3| |badge4| |badge5|
 
 This module automatically creates and posts a Vendor Bill when a
-purchase receipt is validated.
+purchase receipt is validated. It also creates and posts a Credit Note
+when a purchase return is validated, provided the return lines are
+marked as *Update quantities on SO/PO* in the return wizard.
 
 **Table of contents**
 
@@ -43,18 +45,54 @@ purchase receipt is validated.
 Configuration
 =============
 
-Three configuration levels control whether a Purchase Order line is
-auto-billed when the related receipt is validated. They are evaluated
-per line at receipt time:
+Whether a Purchase Order is auto-billed when its receipt is validated is
+resolved from two configuration levels, plus a per-order kill switch:
 
-1. **Product Category** → *Auto Bill on Receipt* (boolean). Sets the
-   baseline for all products in the category.
-2. **Product** → *Auto Bill on Receipt* (selection: *Auto* / *No Auto* /
-   empty). Leave empty to inherit from the product category. *Auto* or
-   *No Auto* overrides the category setting for this product.
+1. **Company** → *Settings > Purchase > Invoicing > Auto Bill on
+   Receipt* (boolean). Sets the default for all vendors.
+2. **Vendor** → *Auto Bill on Receipt* (selection: *Auto* / *No Auto* /
+   empty), on the vendor form. Leave empty to inherit from the company.
+   *Auto* or *No Auto* overrides the company default for this vendor.
 3. **Purchase Order** → *Block Auto Bill* (boolean, on the *Other
-   Information* tab). When ticked, suppresses auto-billing for the whole
-   order regardless of product or category settings.
+   Information* tab). When ticked, suppresses auto-billing for this
+   order regardless of the company or vendor settings.
+
+The bill date uses the timezone set on the company's contact. To set it,
+install the
+`partner_tz <https://github.com/OCA/partner-contact/tree/19.0/partner_tz>`__
+module and configure the timezone on the company's contact.
+
+Usage
+=====
+
+Once auto-billing is configured, validate a purchase receipt as usual. A
+Vendor Bill is automatically created and posted shortly after via the
+scheduled action. The bill only includes PO lines whose product bill
+control policy is *On received quantities* and that have a positive
+quantity to invoice.
+
+**Returns / Credit Notes:** When a return is validated and its return
+lines have *Update quantities on SO/PO* enabled in the return wizard, a
+Credit Note is automatically created and posted for the returned
+quantities. The credit note is only created when a Vendor Bill has
+already been posted (i.e. the PO line has a negative *Quantity to
+Invoice*).
+
+The bill/credit note date is the receipt/return validation date
+converted to the company's timezone (falls back to UTC when no timezone
+is set).
+
+If creation or posting fails, the error is logged in the Purchase Order
+chatter and a To-Do activity is scheduled for follow-up.
+
+**Case 1 — Cancelling an auto-bill:** An auto-posted bill can be
+cancelled like any other Vendor Bill. However, the module will not
+automatically create a new bill for the same receipt.
+
+**Case 2 — Reprocessing an auto-bill:** This is not supported. Once the
+scheduled action processes a receipt or return, it will not be picked up
+again. To bill or refund the same quantities, create the document
+manually from the Purchase Order.
 
 Bug Tracker
 ===========
