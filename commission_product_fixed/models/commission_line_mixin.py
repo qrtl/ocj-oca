@@ -18,7 +18,10 @@ class CommissionLineMixin(models.AbstractModel):
         if commission and commission.commission_type == "product_fixed":
             if product.commission_free:
                 return 0.0
-            line = commission._get_product_fixed_line(product)
+            date = getattr(self, "invoice_date", False) or (
+                fields.Date.context_today(self)
+            )
+            line = commission._get_product_fixed_line(product, date, quantity)
             if not line:
                 # Missing configuration. The amount is left at 0 here and the
                 # posting of the invoice is blocked in account.move to force a
@@ -29,9 +32,6 @@ class CommissionLineMixin(models.AbstractModel):
                 line.currency_id != self.currency_id
             ):
                 company = getattr(self, "company_id", False) or self.env.company
-                date = getattr(self, "invoice_date", False) or (
-                    fields.Date.context_today(self)
-                )
                 amount = line.currency_id._convert(
                     amount, self.currency_id, company, date
                 )

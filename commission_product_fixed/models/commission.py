@@ -2,6 +2,7 @@
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl).
 
 from odoo import api, fields, models
+from odoo.exceptions import ValidationError
 
 
 class Commission(models.Model):
@@ -18,22 +19,32 @@ class Commission(models.Model):
         copy=True,
     )
 
-    def _get_product_fixed_line(self, product):
-        """Return the product amount line matching the given product (or empty)."""
+    def _get_product_fixed_line(self, product, date=None, quantity=0.0):
+        """Return the applicable product amount line (or empty).
+
+        Lines are filtered by product, validity dates and minimum quantity.
+        ``product_line_ids`` is ordered (see ``_order``) so that the first
+        match is the most specific one (highest applicable ``min_qty``).
+        """
         self.ensure_one()
-        return self.product_line_ids.filtered(lambda x: x.product_id == product)[:1]
+        lines = self.product_line_ids.filtered(
+            lambda x: x.product_id == product and x.min_qty <= quantity
+        )
+        if date:
+            lines = lines.filtered(
+                lambda x: (not x.date_start or x.date_start <= date)
+                and (not x.date_end or x.date_end >= date)
+            )
+        return lines[:1]
 
 
 class CommissionProductLine(models.Model):
     _name = "commission.product.line"
     _description = "Fixed commission amount per product"
+    _order = "sequence, min_qty desc, id"
     _rec_name = "product_id"
 
-    _unique_product = models.Constraint(
-        "UNIQUE(commission_id, product_id)",
-        "You can only set one amount per product in a commission.",
-    )
-
+    sequence = fields.Integer(default=10)
     commission_id = fields.Many2one(
         comodel_name="commission",
         required=True,
@@ -43,6 +54,13 @@ class CommissionProductLine(models.Model):
         comodel_name="product.product",
         string="Product",
         required=True,
+    )
+    min_qty = fields.Float(
+        string="Min. Quantity",
+        default=0.0,
+        help="The minimum invoiced quantity for this amount to apply. When "
+        "several lines match a product, the one with the highest applicable "
+        "minimum quantity is used.",
     )
     amount = fields.Monetary(
         string="Commission Amount",
@@ -55,5 +73,23 @@ class CommissionProductLine(models.Model):
         required=True,
     )
     currency_id = fields.Many2one(
-        related="company_id.currency_id",
+        comodel_name="res.currency",
+        default=lambda self: self.env.company.currency_id,
+        required=True,
     )
+    date_start = fields.Date(
+        string="Start Date",
+        help="Start date for this amount (inclusive).",
+    )
+    date_end = fields.Date(
+        string="End Date",
+        help="End date for this amount (inclusive).",
+    )
+
+    @api.constrains("date_start", "date_end")
+    def _check_dates(self):
+        for line in self:
+            if line.date_start and line.date_end and line.date_start > line.date_end:
+                raise ValidationError(
+                    self.env._("The start date cannot be after the end date.")
+                )

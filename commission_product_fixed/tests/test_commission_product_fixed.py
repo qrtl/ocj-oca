@@ -1,6 +1,8 @@
 # Copyright 2026 Quartile
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl).
 
+from datetime import date
+
 from odoo import Command
 from odoo.exceptions import ValidationError
 from odoo.tests.common import TransactionCase
@@ -41,11 +43,12 @@ class TestCommissionProductFixed(TransactionCase):
         )
         cls.customer = cls.env["res.partner"].create({"name": "Customer"})
 
-    def _create_invoice(self, agent, commission, product, qty):
+    def _create_invoice(self, agent, commission, product, qty, invoice_date=None):
         return self.env["account.move"].create(
             {
                 "move_type": "out_invoice",
                 "partner_id": self.customer.id,
+                "invoice_date": invoice_date,
                 "invoice_line_ids": [
                     Command.create(
                         {
@@ -100,3 +103,58 @@ class TestCommissionProductFixed(TransactionCase):
         invoice.action_post()
         self.assertEqual(invoice.state, "posted")
         self.assertEqual(invoice.invoice_line_ids.agent_ids.amount, 600)
+
+    def test_min_qty_tier(self):
+        # Volume tier: above 10 units, product A grants 400 instead of 500.
+        self.env["commission.product.line"].create(
+            {
+                "commission_id": self.commission_x.id,
+                "product_id": self.product_a.id,
+                "min_qty": 10,
+                "amount": 400,
+            }
+        )
+        below = self._create_invoice(
+            self.agent_x, self.commission_x, self.product_a, 5
+        )
+        above = self._create_invoice(
+            self.agent_x, self.commission_x, self.product_a, 12
+        )
+        self.assertEqual(below.invoice_line_ids.agent_ids.amount, 2500)  # 500 x 5
+        self.assertEqual(above.invoice_line_ids.agent_ids.amount, 4800)  # 400 x 12
+
+    def test_date_validity(self):
+        # Restrict the product A amount to a window that excludes the invoice.
+        self.commission_x.product_line_ids.filtered(
+            lambda x: x.product_id == self.product_a
+        ).write({"date_start": date(2026, 1, 1), "date_end": date(2026, 1, 31)})
+        out_of_range = self._create_invoice(
+            self.agent_x,
+            self.commission_x,
+            self.product_a,
+            1,
+            invoice_date=date(2026, 6, 1),
+        )
+        self.assertEqual(out_of_range.invoice_line_ids.agent_ids.amount, 0)
+        with self.assertRaises(ValidationError):
+            out_of_range.action_post()
+        in_range = self._create_invoice(
+            self.agent_x,
+            self.commission_x,
+            self.product_a,
+            1,
+            invoice_date=date(2026, 1, 15),
+        )
+        self.assertEqual(in_range.invoice_line_ids.agent_ids.amount, 500)
+
+    def test_start_date_after_end_date(self):
+        with self.assertRaises(ValidationError):
+            self.env["commission.product.line"].create(
+                {
+                    "commission_id": self.commission_x.id,
+                    "product_id": self.product_b.id,
+                    "amount": 100,
+                    "date_start": date(2026, 2, 1),
+                    "date_end": date(2026, 1, 1),
+                }
+            )

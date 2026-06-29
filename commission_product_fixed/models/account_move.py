@@ -1,7 +1,7 @@
 # Copyright 2026 Quartile
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl).
 
-from odoo import models
+from odoo import fields, models
 from odoo.exceptions import ValidationError
 
 
@@ -22,6 +22,7 @@ class AccountMove(models.Model):
         """
         missing = []
         for move in self.filtered(lambda m: m.move_type[:3] == "out"):
+            date = move.invoice_date or move.date or fields.Date.context_today(move)
             for line in move.invoice_line_ids:
                 if line.commission_free or not line.product_id:
                     continue
@@ -29,7 +30,9 @@ class AccountMove(models.Model):
                     commission = agent.commission_id
                     if commission.commission_type != "product_fixed":
                         continue
-                    if not commission._get_product_fixed_line(line.product_id):
+                    if not commission._get_product_fixed_line(
+                        line.product_id, date, line.quantity
+                    ):
                         missing.append(
                             self.env._(
                                 "%(agent)s / %(product)s (commission: %(commission)s)",
