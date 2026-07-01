@@ -29,7 +29,7 @@ msgstr "表示名"
 #: model:ir.model.fields,help:partner_search_alias.field_res_partner__search_alias
 #: model:ir.model.fields,help:partner_search_alias.field_res_users__search_alias
 msgid "Enter the name that is also used for name search."
-msgstr "名前検索にも使用される名称を入力してください。"
+msgstr "名前検索に含めたい名称を入力してください。"
 
 #. module: partner_search_alias
 #: model:ir.model.fields,field_description:partner_search_alias.field_res_partner__id
