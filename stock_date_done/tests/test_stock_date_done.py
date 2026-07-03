@@ -15,19 +15,10 @@ class TestStockDateDone(BaseCommon):
     def setUpClass(cls):
         super().setUpClass()
         cls.partner = cls.env["res.partner"].create({"name": "Test Partner"})
-        categ = cls.env["product.category"].create(
-            {
-                "name": "Test Category",
-                "property_cost_method": "fifo",
-                "property_valuation": "real_time",
-            }
-        )
         cls.product = cls.env["product.product"].create(
             {
                 "name": "Test Product",
                 "is_storable": True,
-                "categ_id": categ.id,
-                "standard_price": 100.0,
             }
         )
         cls.supplier_location = cls.env.ref("stock.stock_location_suppliers")
