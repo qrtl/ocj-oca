@@ -38,7 +38,7 @@ class TestEndpointJson2Controller(HttpCase):
         cls.endpoint = cls._create_endpoint(
             {
                 "name": "get_partners",
-                "route_group": "contacts",
+                "route_group": "test_contacts",
                 "json2_description": "Return partner records",
                 "json2_method": "search_read",
                 "json2_response_fields": "name\nemail",
@@ -114,7 +114,7 @@ class TestEndpointJson2Controller(HttpCase):
         )
 
     def test_dispatch_happy_path(self):
-        res = self._call("contacts", "get_partners")
+        res = self._call("test_contacts", "get_partners")
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertIsInstance(data, list)
@@ -124,13 +124,13 @@ class TestEndpointJson2Controller(HttpCase):
             self.assertNotIn("phone", row)
 
     def test_dispatch_with_limit(self):
-        res = self._call("contacts", "get_partners", {"limit": 2})
+        res = self._call("test_contacts", "get_partners", {"limit": 2})
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertLessEqual(len(data), 2)
 
     def test_dispatch_not_found(self):
-        res = self._call("contacts", "nonexistent")
+        res = self._call("test_contacts", "nonexistent")
         self.assertEqual(res.status_code, 404)
 
     def test_dispatch_inactive_endpoint(self):
@@ -158,7 +158,7 @@ class TestEndpointJson2Controller(HttpCase):
         self.assertEqual(res.status_code, 422)
 
     def test_dispatch_wrong_param_type(self):
-        res = self._call("contacts", "get_partners", {"limit": "not_an_int"})
+        res = self._call("test_contacts", "get_partners", {"limit": "not_an_int"})
         self.assertEqual(res.status_code, 422)
 
     def test_dispatch_int_accepted_for_float(self):
@@ -182,7 +182,7 @@ class TestEndpointJson2Controller(HttpCase):
 
     def test_dispatch_default_domain_applied(self):
         self.env["res.partner"].create({"name": "Test Individual", "is_company": False})
-        res = self._call("contacts", "get_partners")
+        res = self._call("test_contacts", "get_partners")
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertTrue(data)
@@ -194,7 +194,7 @@ class TestEndpointJson2Controller(HttpCase):
             {"name": "MergeCo", "ref": "MERGE_TEST", "is_company": True}
         )
         res = self._call(
-            "contacts",
+            "test_contacts",
             "get_partners",
             {"domain": [["ref", "=", "MERGE_TEST"]]},
         )
@@ -271,8 +271,8 @@ class TestEndpointJson2Controller(HttpCase):
         res = self._call_doc()
         self.assertEqual(res.status_code, 200)
         data = res.json()
-        self.assertIn("contacts", data)
-        names = [ep["name"] for ep in data["contacts"]]
+        self.assertIn("test_contacts", data)
+        names = [ep["name"] for ep in data["test_contacts"]]
         self.assertIn("get_partners", names)
 
     def test_dispatch_code_snippet(self):

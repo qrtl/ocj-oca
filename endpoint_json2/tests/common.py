@@ -15,7 +15,7 @@ class CommonEndpointJson2(TransactionCase):
         cls.endpoint = cls._create_endpoint(
             {
                 "name": "get_partners",
-                "route_group": "contacts",
+                "route_group": "test_contacts",
                 "json2_description": "Return partner records",
                 "json2_method": "search_read",
                 "json2_response_fields": "name\nemail",

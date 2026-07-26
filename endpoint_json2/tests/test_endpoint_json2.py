@@ -10,7 +10,7 @@ from .common import CommonEndpointJson2
 
 class TestEndpointJson2(CommonEndpointJson2):
     def test_route_auto_computed(self):
-        self.assertEqual(self.endpoint.route, "/json2/contacts/get_partners")
+        self.assertEqual(self.endpoint.route, "/json2/test_contacts/get_partners")
 
     def test_private_method_rejected(self):
         with self.assertRaises(ValidationError):
