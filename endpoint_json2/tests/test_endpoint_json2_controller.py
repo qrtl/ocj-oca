@@ -6,6 +6,8 @@ import os
 from datetime import datetime, timedelta
 from unittest import skipIf
 
+import pytz
+
 from odoo import Command
 from odoo.tests import new_test_user
 from odoo.tests.common import HttpCase
@@ -380,3 +382,31 @@ class TestEndpointJson2Controller(HttpCase):
         res = self._call("test", "get_categories")
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json()[0]["name"], "病院")
+
+    def test_response_timezone_forced(self):
+        category = self.env["res.partner.category"].create({"name": "TZ Test"})
+        endpoint = self._create_endpoint(
+            {
+                "name": "get_tz_categories",
+                "json2_model_id": self.env["ir.model"]._get("res.partner.category").id,
+                "json2_description": "Return partner categories",
+                "json2_method": "search_read",
+                "json2_response_fields": "name\nwrite_date",
+                "json2_default_domain": f'[["id", "=", {category.id}]]',
+            }
+        )
+        endpoint._handle_registry_sync()
+        utc_value = category.write_date.strftime("%Y-%m-%d %H:%M:%S")
+        # Without a forced timezone, datetimes are returned in UTC.
+        res = self._call("test", "get_tz_categories")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()[0]["write_date"], utc_value)
+        endpoint.json2_tz = "Asia/Tokyo"
+        expected = (
+            pytz.utc.localize(category.write_date)
+            .astimezone(pytz.timezone("Asia/Tokyo"))
+            .strftime("%Y-%m-%d %H:%M:%S")
+        )
+        res = self._call("test", "get_tz_categories")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()[0]["write_date"], expected)

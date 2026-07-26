@@ -34,6 +34,7 @@
                             <field name="json2_model_name" invisible="1" />
                             <field name="json2_default_domain" />
                             <field name="json2_lang_id" />
+                            <field name="json2_tz" />
                         </group>
                         <group string="Access">
                             <field name="json2_doc_url" widget="url" />

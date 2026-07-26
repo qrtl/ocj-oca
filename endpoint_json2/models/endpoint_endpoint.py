@@ -4,6 +4,7 @@
 import json
 from datetime import date, datetime
 
+import pytz
 import werkzeug
 
 from odoo import Command, api, fields, models
@@ -11,6 +12,8 @@ from odoo.exceptions import AccessError, ValidationError
 from odoo.service.model import get_public_method
 from odoo.tools.safe_eval import json as safe_json
 from odoo.tools.safe_eval import safe_eval, wrap_module
+
+from odoo.addons.base.models.res_partner import _tz_get
 
 
 class EndpointEndpoint(models.Model):
@@ -59,6 +62,13 @@ class EndpointEndpoint(models.Model):
         help="Force this language on the execution context so that translatable "
         "field values (including dotted relational fields) are returned in it, "
         "regardless of the API user's language.",
+    )
+    json2_tz = fields.Selection(
+        _tz_get,
+        string="Response Timezone",
+        help="Convert datetime values in the response from UTC to this timezone "
+        "(rendered without an offset, as local wall time). Leave empty to return "
+        "UTC. Incoming datetime parameters are not converted.",
     )
     json2_group_ids = fields.Many2many(
         "res.groups",
@@ -373,6 +383,9 @@ class EndpointEndpoint(models.Model):
 
     def _json2_serialize_value(self, val):
         if isinstance(val, datetime):
+            if self.json2_tz:
+                tz = pytz.timezone(self.json2_tz)
+                val = pytz.utc.localize(val).astimezone(tz).replace(tzinfo=None)
             return val.strftime("%Y-%m-%d %H:%M:%S")
         if isinstance(val, date):
             return val.isoformat()
@@ -394,6 +407,8 @@ class EndpointEndpoint(models.Model):
         Model = request.env[self.json2_model_name].sudo()
         if self.json2_lang_id:
             Model = Model.with_context(lang=self.json2_lang_id.code)
+        if self.json2_tz:
+            Model = Model.with_context(tz=self.json2_tz)
         default_domain = json.loads(self.json2_default_domain or "[]")
         if default_domain:
             params["domain"] = default_domain + (params.get("domain") or [])
