@@ -53,6 +53,13 @@ class EndpointEndpoint(models.Model):
         default="[]",
         help="Default domain filter applied before calling the method (JSON format).",
     )
+    json2_lang_id = fields.Many2one(
+        "res.lang",
+        string="Response Language",
+        help="Force this language on the execution context so that translatable "
+        "field values (including dotted relational fields) are returned in it, "
+        "regardless of the API user's language.",
+    )
     json2_group_ids = fields.Many2many(
         "res.groups",
         string="Allowed Groups",
@@ -385,6 +392,8 @@ class EndpointEndpoint(models.Model):
         kwargs = request.get_json_data() or {}
         params = self._json2_validate_params(kwargs)
         Model = request.env[self.json2_model_name].sudo()
+        if self.json2_lang_id:
+            Model = Model.with_context(lang=self.json2_lang_id.code)
         default_domain = json.loads(self.json2_default_domain or "[]")
         if default_domain:
             params["domain"] = default_domain + (params.get("domain") or [])

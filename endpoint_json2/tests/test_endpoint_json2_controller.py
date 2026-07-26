@@ -354,3 +354,29 @@ class TestEndpointJson2Controller(HttpCase):
             self.assertIn("label", row)
             self.assertNotIn("name", row)
             self.assertIn("email", row)
+
+    def test_response_language_forced(self):
+        lang_ja = self.env["res.lang"]._activate_lang("ja_JP")
+        self.api_user.lang = "en_US"
+        category = self.env["res.partner.category"].create({"name": "Hospital"})
+        category.update_field_translations("name", {"ja_JP": "病院"})
+        self.assertEqual(category.with_context(lang="ja_JP").name, "病院")
+        endpoint = self._create_endpoint(
+            {
+                "name": "get_categories",
+                "json2_model_id": self.env["ir.model"]._get("res.partner.category").id,
+                "json2_description": "Return partner categories",
+                "json2_method": "search_read",
+                "json2_response_fields": "name",
+                "json2_default_domain": f'[["id", "=", {category.id}]]',
+            }
+        )
+        endpoint._handle_registry_sync()
+        # Without a forced language, the API user's language applies.
+        res = self._call("test", "get_categories")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()[0]["name"], "Hospital")
+        endpoint.json2_lang_id = lang_ja
+        res = self._call("test", "get_categories")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()[0]["name"], "病院")

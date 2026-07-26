@@ -23,6 +23,10 @@ set to **JSON-2 API**.
   ```
 - **Default Domain**: A JSON-formatted domain filter applied to every request
   (e.g. `[["active", "=", true]]`).
+- **Response Language**: Optionally force a language on the execution context so
+  that translatable field values (including dotted relational fields such as
+  `uom_id.name`) are returned in that language regardless of the API user's
+  language setting. Untranslated values fall back to the source language.
 - **Parameters**: Define named parameters with types, defaults, and required flags.
   These are validated before the method is called.
 
