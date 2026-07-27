@@ -396,17 +396,18 @@ class TestEndpointJson2Controller(HttpCase):
             }
         )
         endpoint._handle_registry_sync()
-        utc_value = category.write_date.strftime("%Y-%m-%d %H:%M:%S")
-        # Without a forced timezone, datetimes are returned in UTC.
+        utc_value = pytz.utc.localize(category.write_date)
+        # Without a forced timezone, datetimes are rendered in UTC.
         res = self._call("test", "get_tz_categories")
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json()[0]["write_date"], utc_value)
+        self.assertEqual(res.json()[0]["write_date"], utc_value.isoformat())
         endpoint.json2_tz = "Asia/Tokyo"
-        expected = (
-            pytz.utc.localize(category.write_date)
-            .astimezone(pytz.timezone("Asia/Tokyo"))
-            .strftime("%Y-%m-%d %H:%M:%S")
-        )
         res = self._call("test", "get_tz_categories")
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json()[0]["write_date"], expected)
+        tokyo_value = res.json()[0]["write_date"]
+        self.assertEqual(
+            tokyo_value, utc_value.astimezone(pytz.timezone("Asia/Tokyo")).isoformat()
+        )
+        # The offset is carried in the payload, so both renderings are the same
+        # instant.
+        self.assertEqual(datetime.fromisoformat(tokyo_value), utc_value)

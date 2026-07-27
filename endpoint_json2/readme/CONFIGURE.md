@@ -27,10 +27,12 @@ set to **JSON-2 API**.
   that translatable field values (including dotted relational fields such as
   `uom_id.name`) are returned in that language regardless of the API user's
   language setting. Untranslated values fall back to the source language.
-- **Response Timezone**: Optionally convert datetime values in the response from
-  UTC to a given timezone, rendered without an offset (local wall time). Leave
-  empty to return UTC. Incoming datetime parameters are not converted — handle
-  request-side conversion in the calling system or a custom method.
+- **Response Timezone**: The timezone datetime values are rendered in. Datetimes
+  are always serialized as ISO 8601 with a UTC offset (e.g.
+  `2026-07-27T13:30:00+09:00`), so this setting only selects the offset they
+  carry; leave it empty to render in UTC. Incoming datetime parameters are not
+  converted — handle request-side conversion in the calling system or a custom
+  method.
 - **Parameters**: Define named parameters with types, defaults, and required flags.
   These are validated before the method is called.
 

@@ -179,7 +179,7 @@ class TestEndpointJson2(CommonEndpointJson2):
             "avatar": b"\x89PNG",
         }
         serialized = self.endpoint._json2_serialize_values(result)
-        self.assertEqual(serialized["write_date"], "2026-01-15 10:30:00")
+        self.assertEqual(serialized["write_date"], "2026-01-15T10:30:00+00:00")
         self.assertEqual(serialized["date"], "2026-01-15")
         self.assertIsInstance(serialized["avatar"], str)
 
@@ -190,5 +190,6 @@ class TestEndpointJson2(CommonEndpointJson2):
         }
         serialized = self.endpoint._json2_serialize_values(result)
         self.assertEqual(
-            serialized["tag_dates"], ["2026-01-01 00:00:00", "2026-02-01 00:00:00"]
+            serialized["tag_dates"],
+            ["2026-01-01T00:00:00+00:00", "2026-02-01T00:00:00+00:00"],
         )

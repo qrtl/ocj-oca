@@ -4,7 +4,6 @@
 import json
 from datetime import date, datetime
 
-import pytz
 import werkzeug
 
 from odoo import Command, api, fields, models
@@ -66,9 +65,10 @@ class EndpointEndpoint(models.Model):
     json2_tz = fields.Selection(
         _tz_get,
         string="Response Timezone",
-        help="Convert datetime values in the response from UTC to this timezone "
-        "(rendered without an offset, as local wall time). Leave empty to return "
-        "UTC. Incoming datetime parameters are not converted.",
+        help="Render datetime values in the response in this timezone. Values are "
+        "always ISO 8601 with a UTC offset (e.g. 2026-07-27T13:30:00+09:00), so "
+        "this only selects the offset they carry. Leave empty to render in UTC. "
+        "Incoming datetime parameters are not converted.",
     )
     json2_group_ids = fields.Many2many(
         "res.groups",
@@ -383,10 +383,10 @@ class EndpointEndpoint(models.Model):
 
     def _json2_serialize_value(self, val):
         if isinstance(val, datetime):
-            if self.json2_tz:
-                tz = pytz.timezone(self.json2_tz)
-                val = pytz.utc.localize(val).astimezone(tz).replace(tzinfo=None)
-            return val.strftime("%Y-%m-%d %H:%M:%S")
+            # Pin the timezone explicitly (UTC when unset) so that the offset does
+            # not silently follow the API user's timezone.
+            record = self.with_context(tz=self.json2_tz or "UTC")
+            return fields.Datetime.context_timestamp(record, val).isoformat()
         if isinstance(val, date):
             return val.isoformat()
         if isinstance(val, bytes):
