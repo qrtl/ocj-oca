@@ -119,13 +119,37 @@ class EndpointEndpoint(models.Model):
             raise ValidationError(
                 self.env._("Exec mode is set to 'JSON-2 API': you must select a model.")
             )
-        if not self.json2_method and not self.json2_code_snippet:
-            raise ValidationError(
-                self.env._(
-                    "Exec mode is set to 'JSON-2 API': you must specify a method or "
-                    "provide a code snippet."
+
+    @api.constrains("exec_mode", "json2_method", "json2_code_snippet")
+    def _check_json2_exec_target(self):
+        for rec in self:
+            if rec.exec_mode != "json2":
+                continue
+            if not rec.json2_method and not rec.json2_code_snippet:
+                raise ValidationError(
+                    self.env._(
+                        "Exec mode is set to 'JSON-2 API': you must specify a "
+                        "method or provide a code snippet."
+                    )
                 )
-            )
+            if rec.json2_method and rec.json2_code_snippet:
+                raise ValidationError(
+                    self.env._(
+                        "A JSON-2 API endpoint runs either a method or a code snippet, "
+                        "not both: leave one of them empty."
+                    )
+                )
+
+    @api.constrains("exec_mode", "json2_group_ids")
+    def _check_json2_group_ids(self):
+        for rec in self:
+            if rec.exec_mode == "json2" and not rec.json2_group_ids:
+                raise ValidationError(
+                    self.env._(
+                        "A JSON-2 API endpoint must allow at least one group: with an "
+                        "empty list, every caller is denied."
+                    )
+                )
 
     @api.constrains("request_method", "request_content_type", "exec_mode")
     def _check_json2_request_settings(self):

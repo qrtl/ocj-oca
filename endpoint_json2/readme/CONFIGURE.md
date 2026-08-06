@@ -45,8 +45,9 @@ minimal Odoo privileges. Access is controlled at two levels:
   for API key authentication).
 - **Allowed Groups**: Restrict endpoint access to specific user groups. Create
   integration-specific groups (e.g. "Hospital System", "WMS") and assign them to
-  the corresponding API users. Each endpoint declares which groups may call it.
-  Leave empty to allow any authenticated user.
+  the corresponding API users. Each endpoint declares which groups may call it,
+  and at least one group is required: an endpoint that allows no group denies
+  every caller and is hidden from the API documentation.
 
 ## Code Snippets
 

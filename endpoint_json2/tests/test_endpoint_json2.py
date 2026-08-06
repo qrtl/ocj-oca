@@ -3,6 +3,7 @@
 
 from datetime import date, datetime
 
+from odoo import Command
 from odoo.exceptions import ValidationError
 
 from .common import CommonEndpointJson2
@@ -117,6 +118,15 @@ class TestEndpointJson2(CommonEndpointJson2):
             {"name": "snippet_only", "json2_code_snippet": "result = []"}
         )
         self.assertTrue(ep.json2_code_snippet)
+
+    def test_json2_constraints_revalidated_on_write(self):
+        # Both checks must stay in constraints that depend on the fields they
+        # read: _check_exec_mode depends on exec_mode alone, so moving them back
+        # into _validate_exec__json2 would stop catching writes.
+        with self.assertRaises(ValidationError):
+            self.endpoint.json2_code_snippet = "result = []"
+        with self.assertRaises(ValidationError):
+            self.endpoint.json2_group_ids = [Command.clear()]
 
     def test_dotted_response_fields_valid(self):
         self.endpoint.json2_response_fields = "name\ncountry_id.name country"
