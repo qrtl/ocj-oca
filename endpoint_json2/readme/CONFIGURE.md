@@ -21,6 +21,12 @@ set to **JSON-2 API**.
   country_id.name country
   write_date last_modified
   ```
+
+  Works with any method whose rows are objects; rows of another shape (ids,
+  `(id, name)` pairs, a scalar) pass through untouched. Plain names are validated
+  against the model only for `read` and `search_read` — for anything else the keys
+  are the method's own, so a typo is not reported and simply drops that key from
+  the response. Dotted specs are always validated.
 - **Default Domain**: A JSON-formatted domain filter applied to every request
   (e.g. `[["active", "=", true]]`).
 - **Response Language**: Optionally force a language on the execution context so
