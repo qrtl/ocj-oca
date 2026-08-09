@@ -35,6 +35,52 @@ class TestEndpointJson2(CommonEndpointJson2):
         with self.assertRaises(ValidationError):
             self.endpoint.json2_response_fields = "name\ncountry_id.nonexistent"
 
+    def test_plain_names_unvalidated_when_not_a_field_reader(self):
+        """Neither is read/search_read, so their declared names go unchecked.
+
+        The snippet body is never run by the constraint; it is only there
+        because an endpoint needs either a method or a snippet.
+        """
+        for name, response_fields, vals in (
+            ("counts", "__count total", {"json2_method": "read_group"}),
+            ("summary", "branch_code", {"json2_code_snippet": "result = []"}),
+        ):
+            endpoint = self._create_endpoint(
+                dict(vals, name=f"get_{name}", json2_response_fields=response_fields)
+            )
+            self.assertEqual(endpoint.json2_response_fields, response_fields)
+
+    def test_dotted_specs_validated_whatever_the_method(self):
+        """Their base must resolve against the model, method or not."""
+        endpoint = self._create_endpoint(
+            {
+                "name": "get_counts_dotted",
+                "json2_method": "read_group",
+                "json2_response_fields": "__count\ncountry_id.name country",
+            }
+        )
+        bad = ("nonexistent_id.name", "email.something", "country_id.nonexistent")
+        for spec in bad:
+            with self.assertRaises(ValidationError):
+                endpoint.json2_response_fields = f"__count\n{spec}"
+
+    def test_plain_names_still_validated_for_search_read(self):
+        """__count is not a field of res.partner."""
+        with self.assertRaises(ValidationError):
+            self.endpoint.json2_response_fields = "name\n__count"
+
+    def test_changing_method_rechecks_response_fields(self):
+        """The constraint depends on json2_method, so a switch must re-run it."""
+        endpoint = self._create_endpoint(
+            {
+                "name": "get_switched",
+                "json2_method": "read_group",
+                "json2_response_fields": "country_id\n__count",
+            }
+        )
+        with self.assertRaises(ValidationError):
+            endpoint.json2_method = "search_read"
+
     def test_empty_response_fields(self):
         self.endpoint.json2_response_fields = False
         fields, aliases = self.endpoint._json2_parse_response_fields()

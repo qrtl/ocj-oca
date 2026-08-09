@@ -200,7 +200,7 @@ class EndpointEndpoint(models.Model):
             and sub in self.env[fd.comodel_name]._fields
         )
 
-    @api.constrains("json2_response_fields", "json2_model_id")
+    @api.constrains("json2_response_fields", "json2_model_id", "json2_method")
     def _check_json2_response_fields(self):
         for rec in self:
             if not rec.json2_response_fields or not rec.json2_model_name:
@@ -209,10 +209,22 @@ class EndpointEndpoint(models.Model):
                 continue
             Model = self.env[rec.json2_model_name]
             field_names, _aliases = rec._json2_parse_response_fields()
+            # Plain names are checked only for these two methods. This is a
+            # policy choice, not a taxonomy of the ORM: read_group returns model
+            # field values too and is deliberately excluded, because its rows
+            # carry keys of its own (__count, __domain) as well. A module wanting
+            # its own method checked should constrain it where the payload is
+            # defined, which can pin the exact keys rather than merely "is a
+            # field of the model".
+            # Dotted specs stay checkable whatever the method is, because
+            # _json2_resolve_dotted_fields resolves their base against
+            # Model._fields before injecting the related values.
+            reads_fields = rec.json2_method in ("read", "search_read")
             invalid = [
                 f
                 for f in field_names
-                if not rec._json2_is_valid_response_field(Model, f)
+                if ("." in f or reads_fields)
+                and not rec._json2_is_valid_response_field(Model, f)
             ]
             if invalid:
                 raise ValidationError(
