@@ -427,6 +427,8 @@ class EndpointEndpoint(models.Model):
             return val.isoformat()
         if isinstance(val, bytes):
             return val.decode("utf-8", errors="replace")
+        if isinstance(val, fields.Domain):
+            return list(val)
         return val
 
     def _json2_serialize_values(self, result):

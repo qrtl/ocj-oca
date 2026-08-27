@@ -3,7 +3,7 @@
 
 from datetime import date, datetime
 
-from odoo import Command
+from odoo import Command, fields
 from odoo.exceptions import ValidationError
 
 from .common import CommonEndpointJson2
@@ -248,4 +248,17 @@ class TestEndpointJson2(CommonEndpointJson2):
         self.assertEqual(
             serialized["tag_dates"],
             ["2026-01-01T00:00:00+00:00", "2026-02-01T00:00:00+00:00"],
+        )
+
+    def test_serialize_values_domain(self):
+        result = {
+            "name": "Test",
+            "domain": fields.Domain.AND(
+                [[("id", "child_of", [1])], [("type", "=", "delivery")]]
+            ),
+        }
+        serialized = self.endpoint._json2_serialize_values(result)
+        self.assertEqual(
+            serialized["domain"],
+            ["&", ("id", "child_of", [1]), ("type", "=", "delivery")],
         )
