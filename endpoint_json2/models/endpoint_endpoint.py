@@ -2,13 +2,14 @@
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
 import json
-from datetime import date, datetime
+from datetime import datetime
 
 import werkzeug
 
 from odoo import Command, api, fields, models
 from odoo.exceptions import AccessError, ValidationError
 from odoo.service.model import get_public_method
+from odoo.tools.json import json_default
 from odoo.tools.safe_eval import json as safe_json
 from odoo.tools.safe_eval import safe_eval, wrap_module
 
@@ -417,24 +418,19 @@ class EndpointEndpoint(models.Model):
             return _rename(result)
         return result
 
-    def _json2_serialize_value(self, val):
+    def _json2_json_default(self, val):
+        """Encoder hook for values json cannot represent.
+
+        json.dumps applies this at every depth, so nested values are covered
+        without walking the payload ourselves.
+        """
         if isinstance(val, datetime):
-            # Pin the timezone explicitly (UTC when unset) so that the offset does
-            # not silently follow the API user's timezone.
+            # Render as ISO-8601 with an explicit offset, pinning the timezone
+            # (UTC when unset) so it does not silently follow the API user's.
+            # json_default would give naive UTC, which cannot carry json2_tz.
             record = self.with_context(tz=self.json2_tz or "UTC")
             return fields.Datetime.context_timestamp(record, val).isoformat()
-        if isinstance(val, date):
-            return val.isoformat()
-        if isinstance(val, bytes):
-            return val.decode("utf-8", errors="replace")
-        return val
-
-    def _json2_serialize_values(self, result):
-        if isinstance(result, list):
-            return [self._json2_serialize_values(item) for item in result]
-        if isinstance(result, dict):
-            return {k: self._json2_serialize_values(v) for k, v in result.items()}
-        return self._json2_serialize_value(result)
+        return json_default(val)
 
     def _handle_exec__json2(self, request):
         self._json2_check_group_access(request)
@@ -465,5 +461,4 @@ class EndpointEndpoint(models.Model):
         result = self._json2_filter_result(result, response_fields)
         if aliases:
             result = self._json2_apply_aliases(result, aliases)
-        result = self._json2_serialize_values(result)
-        return {"payload": result}
+        return {"payload": result, "json_default": self._json2_json_default}
