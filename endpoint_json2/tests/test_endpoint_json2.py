@@ -1,6 +1,8 @@
 # Copyright 2026 Quartile (https://www.quartile.co)
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
+import base64
+import json
 from datetime import date, datetime
 
 from odoo import Command, fields
@@ -227,38 +229,54 @@ class TestEndpointJson2(CommonEndpointJson2):
         )
         self.assertEqual(aliased, {"name": "Test", "country": "Japan"})
 
-    def test_serialize_values(self):
-        result = {
-            "name": "Test",
-            "write_date": datetime(2026, 1, 15, 10, 30, 0),
-            "date": date(2026, 1, 15),
-            "avatar": b"\x89PNG",
-        }
-        serialized = self.endpoint._json2_serialize_values(result)
-        self.assertEqual(serialized["write_date"], "2026-01-15T10:30:00+00:00")
-        self.assertEqual(serialized["date"], "2026-01-15")
-        self.assertIsInstance(serialized["avatar"], str)
+    def _encode(self, payload):
+        """Encode as the controller does, through the endpoint's hook."""
+        return json.loads(
+            json.dumps(payload, default=self.endpoint._json2_json_default)
+        )
 
-    def test_serialize_values_nested_list(self):
-        result = {
-            "name": "Test",
-            "tag_dates": [datetime(2026, 1, 1), datetime(2026, 2, 1)],
-        }
-        serialized = self.endpoint._json2_serialize_values(result)
+    def test_serialize_values(self):
+        encoded = self._encode(
+            {
+                "name": "Test",
+                "write_date": datetime(2026, 1, 15, 10, 30, 0),
+                "date": date(2026, 1, 15),
+                # Binary fields read back base64-encoded, hence ascii.
+                "avatar": base64.b64encode(b"\x89PNG"),
+            }
+        )
+        # Datetimes carry an explicit offset so json2_tz is unambiguous; dates
+        # and bytes are left to Odoo's own encoder.
+        self.assertEqual(encoded["write_date"], "2026-01-15T10:30:00+00:00")
+        self.assertEqual(encoded["date"], "2026-01-15")
+        self.assertEqual(encoded["avatar"], "iVBORw==")
+
+    def test_serialize_values_nested(self):
+        encoded = self._encode(
+            {"tag_dates": [datetime(2026, 1, 1), datetime(2026, 2, 1)]}
+        )
         self.assertEqual(
-            serialized["tag_dates"],
+            encoded["tag_dates"],
             ["2026-01-01T00:00:00+00:00", "2026-02-01T00:00:00+00:00"],
         )
 
     def test_serialize_values_domain(self):
-        result = {
-            "name": "Test",
-            "domain": fields.Domain.AND(
-                [[("id", "child_of", [1])], [("type", "=", "delivery")]]
-            ),
-        }
-        serialized = self.endpoint._json2_serialize_values(result)
-        self.assertEqual(
-            serialized["domain"],
-            ["&", ("id", "child_of", [1]), ("type", "=", "delivery")],
+        """A Domain reaches the payload from any field computed with one."""
+        encoded = self._encode(
+            {
+                "domain": fields.Domain.AND(
+                    [[("id", "child_of", [1])], [("type", "=", "delivery")]]
+                )
+            }
         )
+        self.assertEqual(
+            encoded["domain"],
+            ["&", ["id", "child_of", [1]], ["type", "=", "delivery"]],
+        )
+
+    def test_serialize_values_domain_nested_date(self):
+        """Values inside a domain need converting too, at any depth."""
+        encoded = self._encode(
+            {"domain": fields.Domain([("date_order", ">=", date(2026, 1, 15))])}
+        )
+        self.assertEqual(encoded["domain"], [["date_order", ">=", "2026-01-15"]])
