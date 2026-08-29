@@ -39,8 +39,9 @@ class EndpointControllerMixin:
     # TODO: probably not needed anymore as controllers are automatically registered
     def _make_json_response(self, payload, headers=None, status=200, **kw):
         # TODO: guess out type?
-        # An endpoint can pass its own encoder hook to override how a given type
-        # is rendered; anything it does not handle falls back to Odoo's default.
+        # An endpoint can pass its own encoder hook, which then replaces Odoo's
+        # for the whole payload: it is expected to delegate to json_default for
+        # the types it does not render itself.
         default = kw.get("json_default") or json_default
         data = json.dumps(payload, default=default)
         if headers is None:
