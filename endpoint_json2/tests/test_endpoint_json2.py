@@ -8,6 +8,8 @@ from datetime import date, datetime
 from odoo import Command, fields
 from odoo.exceptions import ValidationError
 
+from odoo.addons.http_routing.tests.common import MockRequest
+
 from .common import CommonEndpointJson2
 
 
@@ -243,40 +245,23 @@ class TestEndpointJson2(CommonEndpointJson2):
                 "date": date(2026, 1, 15),
                 # Binary fields read back base64-encoded, hence ascii.
                 "avatar": base64.b64encode(b"\x89PNG"),
+                # A Domain reaches the payload from any field computed with one.
+                "domain": fields.Domain([("date_order", ">=", date(2026, 1, 15))]),
             }
         )
-        # Datetimes carry an explicit offset so json2_tz is unambiguous; dates
-        # and bytes are left to Odoo's own encoder.
+        # Datetimes carry an explicit offset so json2_tz is unambiguous;
+        # everything else is left to Odoo's own encoder, at any depth.
         self.assertEqual(encoded["write_date"], "2026-01-15T10:30:00+00:00")
         self.assertEqual(encoded["date"], "2026-01-15")
         self.assertEqual(encoded["avatar"], "iVBORw==")
-
-    def test_serialize_values_nested(self):
-        encoded = self._encode(
-            {"tag_dates": [datetime(2026, 1, 1), datetime(2026, 2, 1)]}
-        )
-        self.assertEqual(
-            encoded["tag_dates"],
-            ["2026-01-01T00:00:00+00:00", "2026-02-01T00:00:00+00:00"],
-        )
-
-    def test_serialize_values_domain(self):
-        """A Domain reaches the payload from any field computed with one."""
-        encoded = self._encode(
-            {
-                "domain": fields.Domain.AND(
-                    [[("id", "child_of", [1])], [("type", "=", "delivery")]]
-                )
-            }
-        )
-        self.assertEqual(
-            encoded["domain"],
-            ["&", ["id", "child_of", [1]], ["type", "=", "delivery"]],
-        )
-
-    def test_serialize_values_domain_nested_date(self):
-        """Values inside a domain need converting too, at any depth."""
-        encoded = self._encode(
-            {"domain": fields.Domain([("date_order", ">=", date(2026, 1, 15))])}
-        )
         self.assertEqual(encoded["domain"], [["date_order", ">=", "2026-01-15"]])
+
+    def test_handle_exec_carries_encoder(self):
+        """The hook only applies if the result hands it to the controller."""
+        with MockRequest(self.env) as req:
+            req.get_json_data = lambda: {}
+            result = self.endpoint._handle_exec__json2(req)
+        self.assertEqual(
+            result["json_default"](datetime(2026, 1, 15, 10, 30, 0)),
+            "2026-01-15T10:30:00+00:00",
+        )
