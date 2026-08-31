@@ -28,6 +28,15 @@
                             <field name="height" string="Height (mm)" />
                             <field name="respect_image_ratio" />
                             <field name="first_page_only" />
+                            <field name="condition_model_id" optional="show" />
+                            <field name="condition_model" column_invisible="1" />
+                            <field
+                                name="domain"
+                                widget="domain"
+                                options="{'model': 'condition_model'}"
+                                readonly="not condition_model"
+                                optional="show"
+                            />
                         </list>
                     </field>
                 </page>

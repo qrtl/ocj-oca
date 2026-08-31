@@ -31,3 +31,13 @@ To configure report-specific images:
 image, it's automatically sized to 50mm width with proportional height. You can
 then adjust either dimension and the other will update automatically to prevent
 distortion.
+
+To show an image on some records only:
+
+1.  Open the image in the report's or the company's *Report Images* tab
+2.  Set *Condition Model* to the model printed by the report, and *Domain* to
+    the records that should carry the image
+
+**Note**: The condition applies to the reports rendering the condition model
+only. A report on any other model keeps printing the image unconditionally, so
+one image can be conditional on one form and always shown on another.

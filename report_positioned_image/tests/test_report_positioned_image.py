@@ -1,14 +1,19 @@
 # Copyright 2026 Quartile (https://www.quartile.co)
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl).
 
+import lxml.html
 from markupsafe import Markup
 
 from odoo import Command
 from odoo.exceptions import ValidationError
+from odoo.tests import tagged
 
 from odoo.addons.base.tests.common import BaseCommon
 
 
+# 'res.partner' is only complete once every module extending it is loaded: at
+# install time it still lacks e.g. account's required columns.
+@tagged("post_install", "-at_install")
 class TestReportPositionedImage(BaseCommon):
     @classmethod
     def setUpClass(cls):
@@ -273,3 +278,104 @@ class TestReportPositionedImage(BaseCommon):
         result = image_no_context._onchange_company_id()
         self.assertIsNone(result)
         self.assertEqual(image_no_context.company_id, self.company_b)
+
+    def _make_header(self, count):
+        """Mimic what _prepare_html renders: one child per body."""
+        children = "".join(
+            f'<div class="header">HEADER-{index}</div>' for index in range(count)
+        )
+        return Markup(
+            "<!DOCTYPE html><html><body>"
+            f'<div id="minimal_layout_report_headers">{children}</div>'
+            "</body></html>"
+        )
+
+    def _setup_condition(self, model="res.partner"):
+        """Make image_a conditional on companies, and link it to the report."""
+        self.image_a.write(
+            {
+                "condition_model_id": self.env["ir.model"]._get(model).id,
+                "domain": "[('is_company', '=', True)]",
+            }
+        )
+        self.report.write(
+            {
+                "include_company_images": False,
+                "report_positioned_image_ids": [Command.set([self.image_a.id])],
+            }
+        )
+        matching = self.env["res.partner"].create(
+            {"name": "Matching Co", "is_company": True}
+        )
+        other = self.env["res.partner"].create(
+            {"name": "Skipped Contact", "is_company": False}
+        )
+        return self.report.with_company(self.company_a), matching, other
+
+    def test_condition_domain_validation(self):
+        partner_model = self.env["ir.model"]._get("res.partner")
+        for invalid in ("[('no_such_field', '=', True)]", "not a domain"):
+            with self.assertRaises(ValidationError):
+                self.image_a.write(
+                    {"condition_model_id": partner_model.id, "domain": invalid}
+                )
+        self.image_a.write(
+            {
+                "condition_model_id": partner_model.id,
+                "domain": "[('is_company', '=', True)]",
+            }
+        )
+
+    def test_condition_applies_to_its_own_model_only(self):
+        """A condition routes the image out of the header for that model only."""
+        report, _matching, _other = self._setup_condition()
+        self.assertFalse(report._get_positioned_image_configs())
+        self.assertEqual(report._get_conditional_positioned_images(), self.image_a)
+        # Same image, condition on another model: unconditional again.
+        self.image_a.condition_model_id = self.env["ir.model"]._get("res.users")
+        self.assertEqual(len(report._get_positioned_image_configs()), 1)
+        self.assertFalse(report._get_conditional_positioned_images())
+
+    def test_inject_conditional_images_into_header(self):
+        """The image lands in the matching record's header child, and only there."""
+        report, matching, other = self._setup_condition()
+        self.image_a.first_page_only = True
+        res_ids = [matching.id, other.id]
+        result = report._inject_conditional_images_into_header(
+            self._make_header(2),
+            res_ids,
+            self.image_a,
+            report._get_condition_matches(res_ids, self.image_a),
+        )
+        headers = lxml.html.fromstring(result).xpath(
+            "//*[@id='minimal_layout_report_headers']"
+        )[0]
+        self.assertEqual(len(headers), 2, "the per-record children must be preserved")
+        self.assertTrue(headers[0].xpath(".//img"))
+        self.assertFalse(headers[1].xpath(".//img"))
+        # subst() runs in the header, so 'first_page_only' still applies.
+        self.assertIn("first-page", str(result))
+        self.assertIn("<!DOCTYPE html>", str(result))
+
+    def test_inject_conditional_images_falls_back_to_bodies(self):
+        """Without one header per record, the image goes into the bodies instead."""
+        report, matching, _other = self._setup_condition()
+        self.image_a.first_page_only = True
+        # One body has no identifiable record, and a third has no res_id at all.
+        bodies = [Markup(f"<html><body>{name}</body></html>") for name in "abc"]
+        res_ids = [None, matching.id]
+        matched_ids = report._get_condition_matches(res_ids, self.image_a)
+        self.assertIsNone(
+            report._inject_conditional_images_into_header(
+                self._make_header(1), res_ids, self.image_a, matched_ids
+            )
+        )
+        new_bodies = report._inject_conditional_images_into_bodies(
+            bodies, res_ids, self.image_a, matched_ids
+        )
+        self.assertEqual(len(new_bodies), len(bodies))
+        self.assertNotIn("<img", str(new_bodies[0]))
+        self.assertIn('<img src="data:image/', str(new_bodies[1]))
+        self.assertNotIn("<img", str(new_bodies[2]))
+        # 'first_page_only' is inert in a body: subst() never runs there.
+        self.assertNotIn("first-page", str(new_bodies[1]))
