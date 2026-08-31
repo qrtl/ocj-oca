@@ -290,14 +290,9 @@ class TestReportPositionedImage(BaseCommon):
             "</body></html>"
         )
 
-    def _setup_condition(self, model="res.partner"):
+    def _setup_condition(self):
         """Make image_a conditional on companies, and link it to the report."""
-        self.image_a.write(
-            {
-                "condition_model_id": self.env["ir.model"]._get(model).id,
-                "domain": "[('is_company', '=', True)]",
-            }
-        )
+        self.image_a.domain = "[('is_company', '=', True)]"
         self.report.write(
             {
                 "include_company_images": False,
@@ -312,29 +307,54 @@ class TestReportPositionedImage(BaseCommon):
         )
         return self.report.with_company(self.company_a), matching, other
 
-    def test_condition_domain_validation(self):
-        partner_model = self.env["ir.model"]._get("res.partner")
+    def test_condition_validated_against_the_linked_reports(self):
+        """The condition is checked against the model of every report using it."""
+        self._setup_condition()
         for invalid in ("[('no_such_field', '=', True)]", "not a domain"):
             with self.assertRaises(ValidationError):
-                self.image_a.write(
-                    {"condition_model_id": partner_model.id, "domain": invalid}
-                )
-        self.image_a.write(
+                self.image_a.domain = invalid
+        # Linking the image to a report whose model cannot evaluate it is refused
+        # too, so the check cannot be bypassed from the report side.
+        country_report = self.env["ir.actions.report"].create(
             {
-                "condition_model_id": partner_model.id,
-                "domain": "[('is_company', '=', True)]",
+                "name": "Country Report",
+                "model": "res.country",
+                "report_type": "qweb-pdf",
+                "report_name": "test_country_report",
             }
         )
+        with self.assertRaises(ValidationError):
+            country_report.report_positioned_image_ids = [
+                Command.set([self.image_a.id])
+            ]
 
-    def test_condition_applies_to_its_own_model_only(self):
-        """A condition routes the image out of the header for that model only."""
+    def test_one_condition_guards_reports_on_several_models(self):
+        """The condition takes its model from the report, so it is not bound to one."""
         report, _matching, _other = self._setup_condition()
-        self.assertFalse(report._get_positioned_image_configs())
-        self.assertEqual(report._get_conditional_positioned_images(), self.image_a)
-        # Same image, condition on another model: unconditional again.
-        self.image_a.condition_model_id = self.env["ir.model"]._get("res.users")
-        self.assertEqual(len(report._get_positioned_image_configs()), 1)
-        self.assertFalse(report._get_conditional_positioned_images())
+        user_report = self.env["ir.actions.report"].create(
+            {
+                "name": "User Report",
+                "model": "res.users",
+                "report_type": "qweb-pdf",
+                "report_name": "test_user_report",
+                "report_positioned_image_ids": [Command.set([self.image_a.id])],
+            }
+        )
+        for conditional in (report, user_report.with_company(self.company_a)):
+            self.assertFalse(conditional._get_positioned_image_configs())
+            self.assertEqual(
+                conditional._get_conditional_positioned_images(), self.image_a
+            )
+
+    def test_condition_unusable_on_the_printed_model_matches_nothing(self):
+        """An image is skipped, not printed unguarded, where it does not apply."""
+        self._setup_condition()
+        countries = self.env["res.country"].search([], limit=2)
+        self.assertFalse(
+            self.image_a._get_condition_matched_ids(
+                self.env["res.country"], countries.ids
+            )
+        )
 
     def test_inject_conditional_images_into_header(self):
         """The image lands in the matching record's header child, and only there."""

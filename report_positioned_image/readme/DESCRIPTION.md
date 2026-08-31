@@ -13,7 +13,8 @@ The module supports two types of images:
 Images can be assigned to a specific company or left as shared records
 (without company assignment) for use across multiple companies
 
-An image can also be made *conditional*: pick a model and a domain, and the
-image is then printed only on the records of that model matching the domain.
-This is how one report can carry, say, a signature stamp for some customers
-and not for others.
+An image can also be made *conditional* by giving it a domain: it is then
+printed only on the records matching that domain. This is how one report can
+carry, say, a signature stamp for some customers and not for others. The domain
+is evaluated against the model of the report being printed, so a single image
+can guard several reports.

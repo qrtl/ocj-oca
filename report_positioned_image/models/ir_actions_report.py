@@ -4,7 +4,7 @@
 import lxml.html
 from markupsafe import Markup
 
-from odoo import fields, models
+from odoo import api, fields, models
 from odoo.tools.image import image_data_uri
 
 
@@ -70,8 +70,10 @@ class IrActionsReport(models.Model):
         printed_ids = [res_id for res_id in res_ids if res_id]
         if not printed_ids:
             return {}
+        model = self.env[self.model]
         return {
-            image.id: image._get_condition_matched_ids(printed_ids) for image in images
+            image.id: image._get_condition_matched_ids(model, printed_ids)
+            for image in images
         }
 
     def _get_conditional_image_configs(self, res_id, images, matched_ids, **kwargs):
@@ -158,6 +160,16 @@ class IrActionsReport(models.Model):
         new_bodies.extend(bodies[len(new_bodies) :])
         return new_bodies
 
+    @api.constrains("report_positioned_image_ids", "model")
+    def _check_positioned_image_domains(self):
+        """A report may only take images whose condition fits the model it renders."""
+        for report in self:
+            if not report.model or report.model not in self.env:
+                continue
+            model = self.env[report.model]
+            for image in report.report_positioned_image_ids.filtered("domain"):
+                image._validate_domain(model)
+
     @staticmethod
     def _image_to_config(image, first_page_only=None):
         return {
@@ -182,8 +194,8 @@ class IrActionsReport(models.Model):
         return images.filtered("image")
 
     def _is_conditional_image(self, image):
-        """An image is conditional only for the model its condition targets."""
-        return bool(image.condition_model_id) and image.condition_model == self.model
+        """An image is conditional when it carries a condition to evaluate."""
+        return bool(image.domain)
 
     def _get_positioned_image_configs(self):
         """Configs of the images injected into the (record-agnostic) header."""
@@ -194,8 +206,8 @@ class IrActionsReport(models.Model):
         ]
 
     def _get_conditional_positioned_images(self):
-        """Images whose condition targets the model this report renders."""
-        if not self.model:
+        """Images to place per record. Needs a model to evaluate them against."""
+        if not self.model or self.model not in self.env:
             return self.env["report.positioned.image"]
         return self._get_positioned_images().filtered(self._is_conditional_image)
 

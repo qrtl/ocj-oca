@@ -35,9 +35,15 @@ distortion.
 To show an image on some records only:
 
 1.  Open the image in the report's or the company's *Report Images* tab
-2.  Set *Condition Model* to the model printed by the report, and *Domain* to
-    the records that should carry the image
+2.  Fill in *Condition* with a domain selecting the records that should carry
+    the image, for example `[('partner_id.seal_on_invoice', '=', True)]`
 
-**Note**: The condition applies to the reports rendering the condition model
-only. A report on any other model keeps printing the image unconditionally, so
-one image can be conditional on one form and always shown on another.
+The condition is evaluated against whichever model the printed report renders,
+so it is not tied to one report: the same image can guard an invoice, a
+quotation and a delivery slip at once, as long as those models share the field
+paths the domain uses. The domain is checked against the model of every report
+the image is placed on, so a field path that does not exist there is refused
+when you save.
+
+**Note**: An image whose condition cannot be evaluated on the model being
+printed is left out of that report rather than printed unguarded.

@@ -25,14 +25,8 @@
                         </group>
                     </group>
                     <group string="Condition">
-                        <field name="condition_model_id" />
-                        <field name="condition_model" invisible="1" />
-                        <field
-                            name="domain"
-                            widget="domain"
-                            options="{'model': 'condition_model'}"
-                            invisible="not condition_model_id"
-                        />
+                        <field name="domain" />
+                        <field name="report_ids" widget="many2many_tags" />
                     </group>
                 </sheet>
             </form>
@@ -46,7 +40,7 @@
                 <field name="name" />
                 <field name="company_id" groups="base.group_multi_company" />
                 <field name="first_page_only" />
-                <field name="condition_model_id" optional="show" />
+                <field name="domain" optional="show" />
             </list>
         </field>
     </record>
