@@ -12,7 +12,7 @@
                     <setting
                         id="kana_format"
                         string="Kana Format"
-                        help="Format readings are stored in. Changing it rewrites the readings that are already stored. A model given a format of its own under Technical &gt; System Parameters keeps that one and is left untouched."
+                        help="Format readings are stored in. Changing it applies to the readings saved from then on; the ones already stored keep the format they were saved in until they are saved again. A model given a format of its own under Technical &gt; System Parameters follows that one instead."
                     >
                         <field name="kana_format" />
                     </setting>
