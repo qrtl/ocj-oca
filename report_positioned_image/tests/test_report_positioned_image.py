@@ -7,8 +7,11 @@ from markupsafe import Markup
 from odoo import Command
 from odoo.exceptions import ValidationError
 from odoo.tests import tagged
+from odoo.tools import mute_logger
 
 from odoo.addons.base.tests.common import BaseCommon
+
+LOGGER = "odoo.addons.report_positioned_image.models.report_positioned_image"
 
 
 # 'res.partner' is only complete once every module extending it is loaded: at
@@ -346,6 +349,7 @@ class TestReportPositionedImage(BaseCommon):
                 conditional._get_conditional_positioned_images(), self.image_a
             )
 
+    @mute_logger(LOGGER)
     def test_condition_unusable_on_the_printed_model_matches_nothing(self):
         """An image is skipped, not printed unguarded, where it does not apply."""
         self._setup_condition()
