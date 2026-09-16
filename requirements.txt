@@ -2,3 +2,5 @@
 PyYAML
 cachetools
 jsonschema
+openupgradelib
+requests
