@@ -49,5 +49,14 @@ class CommonEndpoint(TransactionCase):
             for k, v in request_attrs.items():
                 setattr(mocked_request, k, v)
             mocked_request.make_response = lambda data, **kw: data
-            mocked_request.registry._init_modules = set()
-            yield mocked_request
+            # `_init_modules` lives on the process-wide registry and is not
+            # rolled back with the test transaction. Emptying it permanently
+            # would make any later `routing_map()` regeneration drop every
+            # module controller, so restore it when the mock is released.
+            registry = mocked_request.registry
+            init_modules = registry._init_modules
+            registry._init_modules = set()
+            try:
+                yield mocked_request
+            finally:
+                registry._init_modules = init_modules
