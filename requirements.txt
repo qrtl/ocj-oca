@@ -4,6 +4,7 @@ cachetools
 chardet
 jsonschema
 openupgradelib
+paramiko
 pytz
 pyyaml
 requests
