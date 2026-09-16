@@ -1,6 +1,9 @@
 # generated from manifests external_dependencies
 PyYAML
 cachetools
+chardet
 jsonschema
 openupgradelib
+pytz
+pyyaml
 requests
