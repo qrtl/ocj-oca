@@ -202,3 +202,77 @@ class DataImportLog(models.Model):
         self.ensure_one()
         content = base64.b64decode(self.attachment_id.datas or b"")
         return getattr(self, f"_read_rows_{self.file_format}")(content)
+
+    def _import_unit(self, unit_key, rows):
+        """Import one unit of the file, and return the errors it was rejected for.
+
+        To be implemented by the module that knows the data: return an empty
+        list when the unit is imported, a list of values for
+        ``data.import.error`` when it is rejected as a whole, and raise
+        ``RetryableJobError`` when the failure is transient and the unit should
+        be attempted again.
+        """
+        raise NotImplementedError
+
+    def _enqueue_unit(self, unit_key, rows):
+        """Schedule one unit of the file for import."""
+        self.ensure_one()
+        description = self.env._(
+            "Import %(file)s: %(unit)s", file=self.file_name, unit=unit_key
+        )
+        self.with_delay(description=description)._run_unit(unit_key=unit_key, rows=rows)
+
+    def _run_unit(self, unit_key, rows):
+        """Import one unit and account for it, whatever its outcome."""
+        self.ensure_one()
+        errors = self._import_unit(unit_key, rows)
+        if errors:
+            self.env["data.import.error"].create(
+                [dict(error, log_id=self.id) for error in errors]
+            )
+        if self._settle_unit(failed=bool(errors)):
+            self._enqueue_finalizer()
+
+    def _settle_failed_unit(self, unit_key, reason):
+        """Account for a unit whose job failed outside of its own transaction."""
+        self.ensure_one()
+        self.env["data.import.error"].create(
+            {
+                "log_id": self.id,
+                "reference": unit_key or "",
+                "error_message": reason,
+            }
+        )
+        if self._settle_unit(failed=True):
+            self._enqueue_finalizer()
+
+    def _enqueue_finalizer(self):
+        self.ensure_one()
+        description = self.env._("Finalize import of %(file)s", file=self.file_name)
+        self.with_delay(description=description)._finalize()
+
+    def _finalize_file(self):
+        """Hook for disposing of the source file, extended where it is stored."""
+
+    def _notify_outcome(self):
+        """Hook for reporting an import that did not fully succeed."""
+
+    def _finalize(self):
+        """Close the log once every unit has settled.
+
+        Guarded on the state, so that settling a unit twice, or the sweeper
+        racing a last unit, cannot finalize the same file twice.
+        """
+        self.ensure_one()
+        if self.state != "processing":
+            return
+        if self.unit_failed >= self.unit_total:
+            state = "error"
+        elif self.unit_failed:
+            state = "partial"
+        else:
+            state = "done"
+        self.write({"state": state, "date_done": fields.Datetime.now()})
+        self._finalize_file()
+        if state != "done":
+            self._notify_outcome()

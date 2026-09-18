@@ -9,7 +9,7 @@
     "maintainers": ["AungKoKoLin1997"],
     "website": "https://github.com/OCA/server-tools",
     "license": "LGPL-3",
-    "depends": ["mail"],
+    "depends": ["mail", "queue_job"],
     "external_dependencies": {"python": ["openpyxl"]},
     "data": [
         "security/data_import_security.xml",
