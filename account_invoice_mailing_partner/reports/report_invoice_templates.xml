@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <!-- Address the invoice document to the mailing address, when one is set. The tax
+         ID shown below the address is intentionally left on the billing partner. -->
+    <template id="report_invoice_document" inherit_id="account.report_invoice_document">
+        <xpath
+            expr="//div[@name='address_not_same_as_shipping']//address"
+            position="attributes"
+        >
+            <attribute name="t-field">o.report_partner_id</attribute>
+        </xpath>
+        <xpath
+            expr="//div[@name='address_same_as_shipping']//address"
+            position="attributes"
+        >
+            <attribute name="t-field">o.report_partner_id</attribute>
+        </xpath>
+        <xpath expr="//div[@name='no_shipping']//address" position="attributes">
+            <attribute name="t-field">o.report_partner_id</attribute>
+        </xpath>
+    </template>
+</odoo>
