@@ -10,6 +10,7 @@
     "website": "https://github.com/OCA/server-tools",
     "license": "LGPL-3",
     "depends": ["mail"],
+    "external_dependencies": {"python": ["openpyxl"]},
     "data": [
         "security/data_import_security.xml",
         "security/ir.model.access.csv",

@@ -1,10 +1,19 @@
 # Copyright 2020-2026 Quartile (https://www.quartile.co)
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
+import base64
+import csv
+import datetime
 import hashlib
+import io
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError
+
+try:
+    import openpyxl
+except ImportError:  # pragma: no cover
+    openpyxl = None
 
 
 class DataImportLog(models.Model):
@@ -84,3 +93,82 @@ class DataImportLog(models.Model):
                 )
             )
         self.write({"state": "processing", "unit_total": unit_total})
+
+    @api.model
+    def _normalize_cell(self, value):
+        """Return a spreadsheet cell as the string a CSV would have held.
+
+        Excel hands back typed values, so the same feed read as xlsx and as CSV
+        would otherwise reach the handlers as different Python types.
+        """
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return str(value)
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        if isinstance(value, (datetime.datetime, datetime.date)):
+            return value.isoformat()
+        return str(value).strip()
+
+    def _read_rows_csv(self, content):
+        # utf-8-sig also covers plain utf-8, and keeps a BOM out of the first header.
+        encoding = self.encoding or "utf-8"
+        if encoding.lower().replace("_", "-") == "utf-8":
+            encoding = "utf-8-sig"
+        try:
+            text = content.decode(encoding)
+        except (UnicodeDecodeError, LookupError) as err:
+            raise UserError(
+                self.env._(
+                    "File %(name)s could not be read as %(encoding)s: %(error)s",
+                    name=self.file_name,
+                    encoding=self.encoding,
+                    error=err,
+                )
+            ) from err
+        reader = csv.DictReader(io.StringIO(text))
+        fieldnames = [name.strip() for name in reader.fieldnames or []]
+        rows = [
+            {
+                name: self._normalize_cell(value)
+                for name, value in zip(fieldnames, row.values(), strict=False)
+            }
+            for row in reader
+        ]
+        return fieldnames, rows
+
+    def _read_rows_xlsx(self, content):
+        if openpyxl is None:  # pragma: no cover
+            raise UserError(
+                self.env._(
+                    "The openpyxl library is required to read %s.", self.file_name
+                )
+            )
+        workbook = openpyxl.load_workbook(
+            io.BytesIO(content), read_only=True, data_only=True
+        )
+        sheet = workbook[workbook.sheetnames[0]]
+        rows_iter = sheet.iter_rows(values_only=True)
+        header = next(rows_iter, None)
+        if header is None:
+            return [], []
+        fieldnames = [self._normalize_cell(cell) for cell in header]
+        rows = []
+        for row in rows_iter:
+            values = [self._normalize_cell(cell) for cell in row]
+            if not any(values):  # trailing rows Excel keeps around
+                continue
+            rows.append(dict(zip(fieldnames, values, strict=False)))
+        workbook.close()
+        return fieldnames, rows
+
+    def _read_rows(self):
+        """Return the file content as ``(fieldnames, rows)``.
+
+        ``rows`` are dicts keyed by the header, with every value a string, so a
+        handler reads a CSV feed and an Excel feed the same way.
+        """
+        self.ensure_one()
+        content = base64.b64decode(self.attachment_id.datas or b"")
+        return getattr(self, f"_read_rows_{self.file_format}")(content)
