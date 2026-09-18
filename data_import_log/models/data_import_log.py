@@ -7,6 +7,8 @@ import datetime
 import hashlib
 import io
 
+from markupsafe import Markup
+
 from odoo import api, fields, models
 from odoo.exceptions import UserError
 
@@ -255,7 +257,30 @@ class DataImportLog(models.Model):
         """Hook for disposing of the source file, extended where it is stored."""
 
     def _notify_outcome(self):
-        """Hook for reporting an import that did not fully succeed."""
+        """Report an import that did not fully succeed.
+
+        Posted on the log rather than mailed directly, so that whoever should
+        hear about it is a matter of who follows the record.
+        """
+        self.ensure_one()
+        body = Markup("<p>%s</p>") % self.env._(
+            "%(failed)s of %(total)s units of %(file)s could not be imported.",
+            failed=self.unit_failed,
+            total=self.unit_total,
+            file=self.file_name,
+        )
+        errors = self.error_ids[:10]
+        if errors:
+            body += Markup("<ul>%s</ul>") % Markup("").join(
+                Markup("<li>%s</li>")
+                % (
+                    f"{error.reference}: {error.error_message}"
+                    if error.reference
+                    else error.error_message
+                )
+                for error in errors
+            )
+        self.message_post(body=body, subtype_xmlid="mail.mt_comment")
 
     def _finalize(self):
         """Close the log once every unit has settled.
@@ -276,3 +301,64 @@ class DataImportLog(models.Model):
         self._finalize_file()
         if state != "done":
             self._notify_outcome()
+
+    def _settle_missing_units(self, count):
+        """Count units that will never settle on their own as failed."""
+        self.ensure_one()
+        self.flush_recordset(["unit_total", "unit_settled", "unit_failed"])
+        self.env.cr.execute(
+            """
+            UPDATE data_import_log
+               SET unit_settled = COALESCE(unit_settled, 0) + %s,
+                   unit_failed = COALESCE(unit_failed, 0) + %s
+             WHERE id = %s
+            """,
+            (count, count, self.id),
+        )
+        self.invalidate_recordset(["unit_settled", "unit_failed"])
+
+    @api.model
+    def _busy_log_ids(self):
+        """Return the logs that still have a job of their own to run."""
+        jobs = self.env["queue.job"].search(
+            [
+                ("model_name", "=", "data.import.log"),
+                ("method_name", "in", ["_run_unit", "_finalize"]),
+                (
+                    "state",
+                    "in",
+                    ["pending", "enqueued", "started", "wait_dependencies"],
+                ),
+            ]
+        )
+        return {job.records.id for job in jobs if len(job.records) == 1}
+
+    @api.model
+    def _cron_sweep_stuck_logs(self, age_minutes=60):
+        """Close files whose units will never settle.
+
+        A job deleted or cancelled by hand never settles its unit, which would
+        leave the file in progress and its source where it was picked up.
+        """
+        deadline = fields.Datetime.now() - datetime.timedelta(minutes=age_minutes)
+        logs = self.search(
+            [("state", "=", "processing"), ("date_start", "<", deadline)]
+        )
+        if not logs:
+            return
+        busy_ids = self._busy_log_ids()
+        for log in logs - self.browse(busy_ids):
+            missing = log.unit_total - log.unit_settled
+            if missing > 0:
+                log.env["data.import.error"].create(
+                    {
+                        "log_id": log.id,
+                        "error_message": self.env._(
+                            "%(count)s units were left unaccounted for and are "
+                            "reported as failed.",
+                            count=missing,
+                        ),
+                    }
+                )
+                log._settle_missing_units(missing)
+            log._finalize()

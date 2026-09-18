@@ -15,6 +15,7 @@
         "security/data_import_security.xml",
         "security/ir.model.access.csv",
         "views/data_import_log_views.xml",
+        "data/ir_cron.xml",
     ],
     "installable": True,
 }
