@@ -236,6 +236,12 @@ class DataImportLog(models.Model):
         """
         raise NotImplementedError
 
+    def _enqueue_parse(self):
+        """Schedule the parsing of a file that has just been taken in."""
+        self.ensure_one()
+        description = self.env._("Parse %(file)s", file=self.file_name)
+        self.with_delay(description=description)._parse_file()
+
     def _enqueue_unit(self, unit_key, rows):
         """Schedule one unit of the file for import."""
         self.ensure_one()
