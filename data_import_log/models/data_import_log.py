@@ -205,6 +205,26 @@ class DataImportLog(models.Model):
         content = base64.b64decode(self.attachment_id.datas or b"")
         return getattr(self, f"_read_rows_{self.file_format}")(content)
 
+    def _group_rows(self, fieldnames, rows):
+        """Return the units of the file as ``{key: rows}``.
+
+        A unit is what the import is atomic over. By default every row is its
+        own unit; override to group rows that have to be imported together.
+        """
+        return {str(index): [row] for index, row in enumerate(rows, start=1)}
+
+    def _parse_file(self):
+        """Read the file, split it into units, and schedule them."""
+        self.ensure_one()
+        fieldnames, rows = self._read_rows()
+        units = self._group_rows(fieldnames, rows)
+        self._start_processing(len(units))
+        for unit_key, unit_rows in units.items():
+            self._enqueue_unit(unit_key, unit_rows)
+        if not units:
+            # Nothing will settle, so nothing would close the file.
+            self._finalize()
+
     def _import_unit(self, unit_key, rows):
         """Import one unit of the file, and return the errors it was rejected for.
 
@@ -291,7 +311,9 @@ class DataImportLog(models.Model):
         self.ensure_one()
         if self.state != "processing":
             return
-        if self.unit_failed >= self.unit_total:
+        if not self.unit_total:
+            state = "done"
+        elif self.unit_failed >= self.unit_total:
             state = "error"
         elif self.unit_failed:
             state = "partial"

@@ -88,3 +88,35 @@ class TestDataImportJob(DataImportCase):
         date_done = log.date_done
         log._finalize()
         self.assertEqual(log.date_done, date_done)
+
+    def test_parse_file_makes_one_unit_per_row(self):
+        log = self._create_log(content=b"a,b\n1,2\n3,4\n")
+        with patch(f"{MODEL}._import_unit", return_value=[]) as import_unit:
+            log._parse_file()
+        self.assertEqual(log.unit_total, 2)
+        self.assertEqual(log.state, "done")
+        self.assertEqual(import_unit.call_count, 2)
+
+    def test_parse_file_groups_rows(self):
+        log = self._create_log(content=b"key,qty\nD-1,2\nD-1,3\nD-2,4\n")
+
+        def group(self, fieldnames, rows):
+            units = {}
+            for row in rows:
+                units.setdefault(row["key"], []).append(row)
+            return units
+
+        with (
+            patch(f"{MODEL}._group_rows", group),
+            patch(f"{MODEL}._import_unit", return_value=[]),
+        ):
+            log._parse_file()
+        self.assertEqual(log.unit_total, 2)
+        self.assertEqual(log.state, "done")
+
+    def test_empty_file_is_done_not_error(self):
+        log = self._create_log(content=b"a,b\n")
+        log._parse_file()
+        self.assertEqual(log.unit_total, 0)
+        self.assertEqual(log.state, "done")
+        self.assertFalse(log.error_ids)
