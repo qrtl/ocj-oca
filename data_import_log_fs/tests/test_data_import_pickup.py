@@ -1,0 +1,122 @@
+# Copyright 2026 Quartile (https://www.quartile.co)
+# License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
+
+from unittest.mock import patch
+
+import fsspec
+
+from odoo.tests import TransactionCase
+
+LOG_MODEL = "odoo.addons.data_import_log.models.data_import_log.DataImportLog"
+FEED = b"key,qty\nD-1,2\nD-2,3\n"
+
+
+class TestDataImportPickup(TransactionCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.env = cls.env(context=dict(cls.env.context, queue_job__no_delay=True))
+        cls.backend = cls.env["fs.storage"].create(
+            {
+                "name": "Test Memory",
+                "code": "test_memory",
+                "protocol": "memory",
+                "directory_path": "/test_pickup",
+            }
+        )
+        cls.pickup = cls.env["data.import.pickup"].create(
+            {"name": "Test Feed", "backend_id": cls.backend.id}
+        )
+
+    def setUp(self):
+        super().setUp()
+        # The memory filesystem is process-wide, so each test starts it empty.
+        memory = fsspec.filesystem("memory")
+        if memory.exists("/test_pickup"):
+            memory.rm("/test_pickup", recursive=True)
+        for path in ("in", "processing", "done", "error"):
+            memory.makedirs(f"/test_pickup/{path}", exist_ok=True)
+        self.fs = self.pickup.backend_id.fs
+
+    def _put(self, name, content=FEED):
+        with self.fs.open(f"in/{name}", "wb") as fh:
+            fh.write(content)
+
+    def _names(self, path):
+        return sorted(p.rsplit("/", 1)[-1] for p in self.fs.ls(path, detail=False))
+
+    def test_file_is_taken_in_and_held(self):
+        self._put("feed.csv")
+        with patch(f"{LOG_MODEL}._import_unit", return_value=[]):
+            logs = self.pickup._scan()
+        self.assertEqual(len(logs), 1)
+        self.assertEqual(logs.file_name, "feed.csv")
+        self.assertEqual(logs.state, "done")
+        self.assertEqual(logs.unit_total, 2)
+        self.assertEqual(self._names("in"), [])
+        self.assertEqual(self._names("done"), ["feed.csv"])
+        self.assertEqual(self._names("processing"), [])
+
+    def test_incomplete_file_is_left_alone(self):
+        self._put("feed.csv.tmp")
+        logs = self.pickup._scan()
+        self.assertFalse(logs)
+        self.assertEqual(self._names("in"), ["feed.csv.tmp"])
+
+    def test_unmatched_name_is_left_alone(self):
+        self._put("notes.txt")
+        logs = self.pickup._scan()
+        self.assertFalse(logs)
+        self.assertEqual(self._names("in"), ["notes.txt"])
+
+    def test_same_file_offered_twice_is_taken_once(self):
+        self._put("feed.csv")
+        with patch(f"{LOG_MODEL}._import_unit", return_value=[]):
+            self.pickup._scan()
+            self._put("feed.csv")
+            logs = self.pickup._scan()
+        self.assertFalse(logs)
+        self.assertEqual(self._names("in"), ["feed.csv"])
+        self.assertEqual(
+            self.env["data.import.log"].search_count([("file_name", "=", "feed.csv")]),
+            1,
+        )
+
+    def test_same_name_new_content_is_taken_in(self):
+        self._put("feed.csv")
+        with patch(f"{LOG_MODEL}._import_unit", return_value=[]):
+            self.pickup._scan()
+            self._put("feed.csv", b"key,qty\nD-9,9\n")
+            logs = self.pickup._scan()
+        self.assertEqual(len(logs), 1)
+        self.assertEqual(logs.unit_total, 1)
+
+    def test_rejected_units_still_release_the_file(self):
+        self._put("feed.csv")
+        errors = [{"error_message": "no matching order"}]
+        with patch(f"{LOG_MODEL}._import_unit", return_value=errors):
+            logs = self.pickup._scan()
+        self.assertEqual(logs.state, "error")
+        self.assertEqual(self._names("done"), ["feed.csv"])
+
+    def test_file_is_held_while_units_are_in_flight(self):
+        self._put("feed.csv")
+        with patch(f"{LOG_MODEL}._enqueue_unit"):
+            logs = self.pickup._scan()
+        self.assertEqual(logs.state, "processing")
+        self.assertEqual(self._names("processing"), ["feed.csv"])
+        self.assertEqual(self._names("done"), [])
+
+    def test_several_files_are_taken_in_name_order(self):
+        # Order is by name, not by what the directory happens to list first, so
+        # that a feed numbering its files is imported in sequence.
+        self._put("b.csv")
+        self._put("a.csv")
+        with patch(f"{LOG_MODEL}._import_unit", return_value=[]):
+            logs = self.pickup._scan()
+        self.assertEqual(logs.mapped("file_name"), ["a.csv", "b.csv"])
+        self.assertEqual(self._names("done"), ["a.csv", "b.csv"])
+
+    def test_missing_incoming_directory_is_not_an_error(self):
+        self.fs.rm("in", recursive=True)
+        self.assertFalse(self.pickup._scan())
