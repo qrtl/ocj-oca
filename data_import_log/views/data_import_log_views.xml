@@ -17,6 +17,8 @@
                             <field name="file_name" invisible="1" />
                             <field name="file_format" />
                             <field name="encoding" invisible="file_format != 'csv'" />
+                            <field name="has_header" />
+                            <field name="column_names" groups="base.group_no_one" />
                             <field name="content_hash" groups="base.group_no_one" />
                         </group>
                         <group>

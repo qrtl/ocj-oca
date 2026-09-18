@@ -44,6 +44,16 @@ class DataImportLog(models.Model):
         default="utf-8",
         help="Character encoding of the source file. Ignored for Excel files.",
     )
+    column_names = fields.Text(
+        help="Names to give the columns, one per line, in the order they appear "
+        "in the file. Leave empty to take them from the header row. Set them "
+        "when the interface defines its columns by position, so that a header "
+        "that is absent, renamed or reordered cannot change what is read.",
+    )
+    has_header = fields.Boolean(
+        default=True,
+        help="Whether the first row of the file holds the column names.",
+    )
     model_id = fields.Many2one("ir.model", string="Model")
     model_name = fields.Char(related="model_id.model", string="Model Name")
     state = fields.Selection(
@@ -144,7 +154,8 @@ class DataImportLog(models.Model):
         return str(value).strip()
 
     def _read_rows_csv(self, content):
-        # utf-8-sig also covers plain utf-8, and keeps a BOM out of the first header.
+        """Return the rows of a CSV file, as lists of strings."""
+        # utf-8-sig also covers plain utf-8, and keeps a BOM out of the first cell.
         encoding = self.encoding or "utf-8"
         if encoding.lower().replace("_", "-") == "utf-8":
             encoding = "utf-8-sig"
@@ -159,51 +170,65 @@ class DataImportLog(models.Model):
                     error=err,
                 )
             ) from err
-        reader = csv.DictReader(io.StringIO(text))
-        fieldnames = [name.strip() for name in reader.fieldnames or []]
-        rows = [
-            {
-                name: self._normalize_cell(value)
-                for name, value in zip(fieldnames, row.values(), strict=False)
-            }
-            for row in reader
+        return [
+            [self._normalize_cell(value) for value in row]
+            for row in csv.reader(io.StringIO(text))
         ]
-        return fieldnames, rows
 
     def _read_rows_xlsx(self, content):
+        """Return the rows of an Excel file, as lists of strings."""
         if openpyxl is None:  # pragma: no cover
             raise UserError(
                 self.env._(
-                    "The openpyxl library is required to read %s.", self.file_name
+                    "The openpyxl library is required to read %(name)s.",
+                    name=self.file_name,
                 )
             )
         workbook = openpyxl.load_workbook(
             io.BytesIO(content), read_only=True, data_only=True
         )
         sheet = workbook[workbook.sheetnames[0]]
-        rows_iter = sheet.iter_rows(values_only=True)
-        header = next(rows_iter, None)
-        if header is None:
-            return [], []
-        fieldnames = [self._normalize_cell(cell) for cell in header]
         rows = []
-        for row in rows_iter:
+        for row in sheet.iter_rows(values_only=True):
             values = [self._normalize_cell(cell) for cell in row]
             if not any(values):  # trailing rows Excel keeps around
                 continue
-            rows.append(dict(zip(fieldnames, values, strict=False)))
+            rows.append(values)
         workbook.close()
-        return fieldnames, rows
+        return rows
 
     def _read_rows(self):
         """Return the file content as ``(fieldnames, rows)``.
 
-        ``rows`` are dicts keyed by the header, with every value a string, so a
-        handler reads a CSV feed and an Excel feed the same way.
+        ``rows`` are dicts keyed by the column names, with every value a string,
+        so a handler reads a CSV feed and an Excel feed the same way.
+
+        The names come from ``column_names`` when it is set, and the columns are
+        then read by position: an interface that defines its layout by position
+        must not change meaning because a header was renamed or reordered.
         """
         self.ensure_one()
         content = base64.b64decode(self.attachment_id.datas or b"")
-        return getattr(self, f"_read_rows_{self.file_format}")(content)
+        raw_rows = getattr(self, f"_read_rows_{self.file_format}")(content)
+        configured = [
+            name.strip()
+            for name in (self.column_names or "").splitlines()
+            if name.strip()
+        ]
+        if configured:
+            fieldnames = configured
+            data_rows = raw_rows[1:] if self.has_header else raw_rows
+        elif raw_rows:
+            fieldnames = raw_rows[0]
+            data_rows = raw_rows[1:]
+        else:
+            return [], []
+        rows = [
+            dict(zip(fieldnames, values, strict=False))
+            for values in data_rows
+            if any(values)
+        ]
+        return fieldnames, rows
 
     def _group_rows(self, fieldnames, rows):
         """Return the units of the file as ``{key: rows}``.

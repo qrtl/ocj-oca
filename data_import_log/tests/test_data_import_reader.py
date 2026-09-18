@@ -54,3 +54,30 @@ class TestDataImportReader(DataImportCase):
             content=self._xlsx_bytes(), file_name="feed.xlsx", file_format="xlsx"
         )
         self.assertEqual(log._read_rows(), (HEADER, ROWS))
+
+    def test_columns_read_by_position_ignore_the_header(self):
+        # The header says something else entirely; position is what counts.
+        content = b"A,B\nD-001,3\nD-002,12\n"
+        log = self._create_log(content=content, column_names="伝票番号\n数量")
+        self.assertEqual(log._read_rows(), (HEADER, ROWS))
+
+    def test_columns_by_position_without_a_header(self):
+        content = b"D-001,3\nD-002,12\n"
+        log = self._create_log(
+            content=content, column_names="伝票番号\n数量", has_header=False
+        )
+        self.assertEqual(log._read_rows(), (HEADER, ROWS))
+
+    def test_columns_by_position_in_xlsx(self):
+        log = self._create_log(
+            content=self._xlsx_bytes(),
+            file_name="positional.xlsx",
+            file_format="xlsx",
+            column_names="伝票番号\n数量",
+        )
+        self.assertEqual(log._read_rows(), (HEADER, ROWS))
+
+    def test_blank_rows_are_dropped(self):
+        content = "伝票番号,数量\nD-001,3\n,\nD-002,12\n".encode()
+        log = self._create_log(content=content)
+        self.assertEqual(log._read_rows(), (HEADER, ROWS))
