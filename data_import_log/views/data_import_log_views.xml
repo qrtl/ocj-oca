@@ -13,11 +13,18 @@
                 <sheet>
                     <group>
                         <group>
-                            <field name="import_date" />
-                            <field name="file_path" filename="file_name" />
+                            <field name="file_data" filename="file_name" />
                             <field name="file_name" invisible="1" />
+                            <field name="file_format" />
+                            <field name="encoding" invisible="file_format != 'csv'" />
+                            <field name="content_hash" groups="base.group_no_one" />
                         </group>
                         <group>
+                            <field name="date_start" />
+                            <field name="date_done" />
+                            <field name="unit_total" />
+                            <field name="unit_settled" />
+                            <field name="unit_failed" />
                             <field name="model_id" />
                             <field name="model_name" invisible="1" />
                             <field
@@ -49,11 +56,14 @@
             <list
                 create="false"
                 edit="false"
-                decoration-danger="state=='failed'"
+                decoration-danger="state=='error'"
+                decoration-warning="state=='partial'"
                 decoration-success="state=='done'"
             >
-                <field name="import_date" />
+                <field name="date_start" />
                 <field name="file_name" />
+                <field name="unit_total" />
+                <field name="unit_failed" />
                 <field name="model_id" />
                 <field name="company_id" groups="base.group_multi_company" />
                 <field name="state" />
@@ -68,16 +78,16 @@
                 <field name="file_name" />
                 <field name="model_id" />
                 <filter
-                    name="filter_import_date"
-                    string="Import Date"
-                    date="import_date"
+                    name="filter_date_start"
+                    string="Started On"
+                    date="date_start"
                 />
                 <separator />
                 <filter name="state" string="Status" context="{'group_by':'state'}" />
                 <filter
-                    name="groupby_import_date"
-                    string="Import Date"
-                    context="{'group_by':'import_date'}"
+                    name="groupby_date_start"
+                    string="Started On"
+                    context="{'group_by':'date_start'}"
                 />
                 <filter
                     name="model_id"
