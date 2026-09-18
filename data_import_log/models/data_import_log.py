@@ -94,6 +94,36 @@ class DataImportLog(models.Model):
             )
         self.write({"state": "processing", "unit_total": unit_total})
 
+    def _settle_unit(self, failed=False):
+        """Record one unit as having reached a final outcome.
+
+        Return whether this was the last unit of the file, which makes the
+        caller responsible for finalizing the log.
+
+        The counters are moved by a single statement so that the row lock
+        serializes the workers settling units of the same file concurrently;
+        a read-modify-write through the ORM would lose increments. It runs in
+        the caller's transaction on purpose: a unit that is rolled back after
+        an error must not count as settled either.
+        """
+        self.ensure_one()
+        # The counters are read back from the table, so any pending ORM value
+        # (unit_total, most of all) has to be in it first.
+        self.flush_recordset(["unit_total", "unit_settled", "unit_failed"])
+        self.env.cr.execute(
+            """
+            UPDATE data_import_log
+               SET unit_settled = COALESCE(unit_settled, 0) + 1,
+                   unit_failed = COALESCE(unit_failed, 0) + %s
+             WHERE id = %s
+            RETURNING unit_settled, COALESCE(unit_total, 0)
+            """,
+            (1 if failed else 0, self.id),
+        )
+        settled, total = self.env.cr.fetchone()
+        self.invalidate_recordset(["unit_settled", "unit_failed"])
+        return settled >= total
+
     @api.model
     def _normalize_cell(self, value):
         """Return a spreadsheet cell as the string a CSV would have held.
