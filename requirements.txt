@@ -1,5 +1,6 @@
 # generated from manifests external_dependencies
 PyYAML
+fsspec>=2024.5.0
 jsonschema
 openupgradelib
 requests
