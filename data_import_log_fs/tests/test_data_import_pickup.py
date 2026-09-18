@@ -120,3 +120,36 @@ class TestDataImportPickup(TransactionCase):
     def test_missing_incoming_directory_is_not_an_error(self):
         self.fs.rm("in", recursive=True)
         self.assertFalse(self.pickup._scan())
+
+    def test_unreadable_file_is_isolated_whole(self):
+        # CP932 content read as UTF-8: the file itself cannot be read.
+        self._put("feed.csv", "伝票,数量\nD-1,2\n".encode("cp932"))
+        logs = self.pickup._scan()
+        self.assertTrue(logs.file_error)
+        self.assertEqual(logs.state, "error")
+        self.assertEqual(self._names("error"), ["feed.csv"])
+        self.assertEqual(self._names("done"), [])
+        self.assertEqual(self._names("processing"), [])
+
+    def test_rejected_units_are_written_to_the_error_directory(self):
+        self._put("feed.csv")
+        errors = [{"error_message": "no matching order"}]
+
+        def only_second(self, unit_key, rows):
+            return errors if unit_key == "2" else []
+
+        with patch(f"{LOG_MODEL}._import_unit", only_second):
+            logs = self.pickup._scan()
+        self.assertEqual(logs.state, "partial")
+        # The source was received whole, so it is filed as done ...
+        self.assertEqual(self._names("done"), ["feed.csv"])
+        # ... and only the rejected unit goes back for the sender to resend.
+        self.assertEqual(self._names("error"), ["feed.csv"])
+        with self.fs.open("error/feed.csv", "rb") as fh:
+            self.assertEqual(fh.read(), b"key,qty\r\nD-2,3\r\n")
+
+    def test_no_error_file_when_everything_imports(self):
+        self._put("feed.csv")
+        with patch(f"{LOG_MODEL}._import_unit", return_value=[]):
+            self.pickup._scan()
+        self.assertEqual(self._names("error"), [])
