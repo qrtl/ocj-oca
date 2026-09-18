@@ -77,6 +77,12 @@ class DataImportLog(models.Model):
         "Settled", readonly=True, help="Units that reached a final outcome."
     )
     unit_failed = fields.Integer("Failed", readonly=True)
+    file_error = fields.Boolean(
+        "Unreadable",
+        readonly=True,
+        help="Set when the file itself could not be read, as opposed to some of "
+        "its units being rejected. Such a file is isolated whole.",
+    )
     date_start = fields.Datetime(
         "Started On", readonly=True, default=fields.Datetime.now
     )
@@ -105,6 +111,59 @@ class DataImportLog(models.Model):
                 )
             )
         self.write({"state": "processing", "unit_total": unit_total})
+
+    def _write_rows_csv(self, fieldnames, rows):
+        """Return the rows as a CSV file, in the shape the source came in."""
+        stream = io.StringIO(newline="")
+        writer = csv.writer(stream, lineterminator="\r\n")
+        if self.has_header:
+            writer.writerow(fieldnames)
+        for row in rows:
+            writer.writerow([row.get(name, "") for name in fieldnames])
+        return stream.getvalue().encode(self.encoding or "utf-8")
+
+    def _write_rows_xlsx(self, fieldnames, rows):
+        """Return the rows as an Excel file, in the shape the source came in."""
+        if openpyxl is None:  # pragma: no cover
+            raise UserError(self.env._("The openpyxl library is required."))
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        if self.has_header:
+            sheet.append(fieldnames)
+        for row in rows:
+            sheet.append([row.get(name, "") for name in fieldnames])
+        stream = io.BytesIO()
+        workbook.save(stream)
+        workbook.close()
+        return stream.getvalue()
+
+    def _write_rows(self, fieldnames, rows):
+        """Return rows as a file of the same format the source came in."""
+        self.ensure_one()
+        return getattr(self, f"_write_rows_{self.file_format}")(fieldnames, rows)
+
+    def _rejected_rows(self):
+        """Return ``(fieldnames, rows)`` of the units that were rejected.
+
+        The rows are taken from the file itself rather than kept aside, so the
+        file of rejected units holds what was sent, not a rendering of it.
+        """
+        self.ensure_one()
+        keys = set(self.error_ids.mapped("unit_key")) - {False, ""}
+        if not keys:
+            return [], []
+        fieldnames, rows = self._read_rows()
+        units = self._group_rows(fieldnames, rows)
+        rejected = [row for key, unit in units.items() if key in keys for row in unit]
+        return fieldnames, rejected
+
+    def _rejected_file(self):
+        """Return ``(name, content)`` for the rejected units, or ``None``."""
+        self.ensure_one()
+        fieldnames, rows = self._rejected_rows()
+        if not rows:
+            return None
+        return self.file_name, self._write_rows(fieldnames, rows)
 
     def _settle_unit(self, failed=False):
         """Record one unit as having reached a final outcome.
@@ -238,10 +297,25 @@ class DataImportLog(models.Model):
         """
         return {str(index): [row] for index, row in enumerate(rows, start=1)}
 
+    def _fail_file(self, reason):
+        """Record a file that could not be read, and close it."""
+        self.ensure_one()
+        self.env["data.import.error"].create(
+            {"log_id": self.id, "error_message": reason}
+        )
+        self.write({"file_error": True, "state": "processing"})
+        self._finalize()
+
     def _parse_file(self):
         """Read the file, split it into units, and schedule them."""
         self.ensure_one()
-        fieldnames, rows = self._read_rows()
+        try:
+            fieldnames, rows = self._read_rows()
+        except UserError as err:
+            # The file is unreadable, which is not a unit failing but the whole
+            # file failing, and no retry will change that.
+            self._fail_file(str(err))
+            return
         units = self._group_rows(fieldnames, rows)
         self._start_processing(len(units))
         for unit_key, unit_rows in units.items():
@@ -281,7 +355,10 @@ class DataImportLog(models.Model):
         errors = self._import_unit(unit_key, rows)
         if errors:
             self.env["data.import.error"].create(
-                [dict(error, log_id=self.id) for error in errors]
+                [
+                    dict({"unit_key": unit_key}, **error, log_id=self.id)
+                    for error in errors
+                ]
             )
         if self._settle_unit(failed=bool(errors)):
             self._enqueue_finalizer()
@@ -292,6 +369,7 @@ class DataImportLog(models.Model):
         self.env["data.import.error"].create(
             {
                 "log_id": self.id,
+                "unit_key": unit_key or "",
                 "reference": unit_key or "",
                 "error_message": reason,
             }
@@ -342,7 +420,9 @@ class DataImportLog(models.Model):
         self.ensure_one()
         if self.state != "processing":
             return
-        if not self.unit_total:
+        if self.file_error:
+            state = "error"
+        elif not self.unit_total:
             state = "done"
         elif self.unit_failed >= self.unit_total:
             state = "error"

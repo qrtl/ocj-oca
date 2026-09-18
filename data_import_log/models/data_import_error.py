@@ -9,6 +9,10 @@ class DataImportError(models.Model):
     _description = "Data Import Error"
 
     row_no = fields.Integer("Row Number")
+    unit_key = fields.Char(
+        help="The unit this error belongs to, which is what the file of "
+        "rejected units is built from.",
+    )
     reference = fields.Char()
     error_message = fields.Text("Message")
     log_id = fields.Many2one("data.import.log", string="Log")

@@ -120,3 +120,57 @@ class TestDataImportJob(DataImportCase):
         self.assertEqual(log.unit_total, 0)
         self.assertEqual(log.state, "done")
         self.assertFalse(log.error_ids)
+
+    def test_unreadable_file_is_flagged_and_closed(self):
+        # CP932 content read as UTF-8: the file itself cannot be read.
+        log = self._create_log(content="伝票,数量\nD-1,2\n".encode("cp932"))
+        log._parse_file()
+        self.assertTrue(log.file_error)
+        self.assertEqual(log.state, "error")
+        self.assertEqual(log.unit_total, 0)
+        self.assertTrue(log.error_ids)
+
+    def test_rejected_units_are_written_back(self):
+        content = b"key,qty\nD-1,2\nD-2,3\n"
+        log = self._create_log(content=content)
+        errors = [{"error_message": "no matching order"}]
+
+        def only_second(self, unit_key, rows):
+            return errors if unit_key == "2" else []
+
+        with patch(f"{MODEL}._import_unit", only_second):
+            log._parse_file()
+        self.assertEqual(log.state, "partial")
+        fieldnames, rows = log._rejected_rows()
+        self.assertEqual(fieldnames, ["key", "qty"])
+        self.assertEqual(rows, [{"key": "D-2", "qty": "3"}])
+        name, written = log._rejected_file()
+        self.assertEqual(written, b"key,qty\r\nD-2,3\r\n")
+
+    def test_nothing_is_written_back_when_all_units_import(self):
+        log = self._create_log(content=b"key,qty\nD-1,2\n")
+        with patch(f"{MODEL}._import_unit", return_value=[]):
+            log._parse_file()
+        self.assertIsNone(log._rejected_file())
+
+    def test_rejected_units_are_written_back_as_xlsx(self):
+        import io as _io
+
+        import openpyxl
+
+        workbook = openpyxl.Workbook()
+        workbook.active.append(["key", "qty"])
+        workbook.active.append(["D-1", 2])
+        stream = _io.BytesIO()
+        workbook.save(stream)
+        log = self._create_log(
+            content=stream.getvalue(), file_name="feed.xlsx", file_format="xlsx"
+        )
+        with patch(f"{MODEL}._import_unit", return_value=[{"error_message": "no"}]):
+            log._parse_file()
+        name, written = log._rejected_file()
+        back = openpyxl.load_workbook(_io.BytesIO(written))
+        self.assertEqual(
+            [list(r) for r in back.active.iter_rows(values_only=True)],
+            [["key", "qty"], ["D-1", "2"]],
+        )
