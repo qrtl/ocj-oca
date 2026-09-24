@@ -1,10 +1,7 @@
 # Copyright 2026 Quartile (https://www.quartile.co)
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-from psycopg2 import IntegrityError
-
 from odoo.exceptions import UserError
-from odoo.tools import mute_logger
 
 from .common import DataImportCase
 
@@ -21,17 +18,15 @@ class TestDataImportLog(DataImportCase):
         self.assertTrue(log.date_start)
         self.assertFalse(log.date_done)
 
-    def test_same_file_twice_is_rejected(self):
-        self._create_log()
-        with self.assertRaises(IntegrityError), mute_logger("odoo.sql_db"):
-            self._create_log()
-            self.env.flush_all()
-
-    def test_same_name_different_content_is_accepted(self):
-        self._create_log()
-        other = self._create_log(content=b"a,b\n3,4\n")
+    def test_same_file_can_be_logged_twice(self):
+        # A sender resends a file to correct a unit of it, so the same content
+        # has to be able to come in again; what must not import twice is the
+        # unit, which the module consuming the log recognizes.
+        first = self._create_log()
+        second = self._create_log()
         self.env.flush_all()
-        self.assertEqual(other.state, "pending")
+        self.assertEqual(first.content_hash, second.content_hash)
+        self.assertEqual(second.state, "pending")
 
     def test_start_processing_sets_units(self):
         log = self._create_log()

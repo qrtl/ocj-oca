@@ -35,7 +35,9 @@ class DataImportLog(models.Model):
     file_data = fields.Binary(related="attachment_id.datas", string="File Content")
     content_hash = fields.Char(
         readonly=True,
-        help="SHA-256 of the file content, used to recognize a file already taken in.",
+        index=True,
+        help="SHA-256 of the file content, used to recognize a file that was "
+        "sent before.",
     )
     file_format = fields.Selection(
         [("csv", "CSV"), ("xlsx", "Excel")], required=True, default="csv"
@@ -88,11 +90,6 @@ class DataImportLog(models.Model):
     )
     date_done = fields.Datetime("Finished On", readonly=True)
     error_ids = fields.One2many("data.import.error", "log_id", string="Log Lines")
-
-    _file_uniq = models.Constraint(
-        "UNIQUE (file_name, content_hash)",
-        "This file has already been taken in.",
-    )
 
     @api.model
     def _content_hash(self, content):
