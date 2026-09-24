@@ -69,7 +69,7 @@ class TestDataImportPickup(TransactionCase):
         self.assertFalse(logs)
         self.assertEqual(self._names("in"), ["notes.txt"])
 
-    def test_same_file_offered_twice_is_taken_once(self):
+    def test_file_imported_in_full_is_not_taken_again(self):
         self._put("feed.csv")
         with patch(f"{LOG_MODEL}._import_unit", return_value=[]):
             self.pickup._scan()
@@ -81,6 +81,19 @@ class TestDataImportPickup(TransactionCase):
             self.env["data.import.log"].search_count([("file_name", "=", "feed.csv")]),
             1,
         )
+
+    def test_resent_file_is_taken_again_after_a_rejection(self):
+        # The sender corrects a rejected unit by sending the same file again.
+        self._put("feed.csv")
+        errors = [{"error_message": "no matching order"}]
+        with patch(f"{LOG_MODEL}._import_unit", return_value=errors):
+            first = self.pickup._scan()
+        self.assertEqual(first.state, "error")
+        self._put("feed.csv")
+        with patch(f"{LOG_MODEL}._import_unit", return_value=[]):
+            second = self.pickup._scan()
+        self.assertEqual(len(second), 1)
+        self.assertEqual(second.state, "done")
 
     def test_same_name_new_content_is_taken_in(self):
         self._put("feed.csv")

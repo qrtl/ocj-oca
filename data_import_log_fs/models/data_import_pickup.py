@@ -72,8 +72,13 @@ class DataImportPickup(models.Model):
     def _take_in(self, name):
         """Create the log for one file and hold the file while it is imported.
 
-        Returns the log, or an empty recordset when the file turns out to have
-        been imported already.
+        Returns the log, or an empty recordset when there is nothing left to
+        import from the file.
+
+        A sender corrects a rejected unit by sending the same file again, so an
+        identical file is taken in again whenever the import it belongs to left
+        something behind. It is only left in place when that earlier import
+        succeeded whole, since there would be nothing in it to import.
         """
         self.ensure_one()
         fs = self.backend_id.fs
@@ -83,9 +88,14 @@ class DataImportPickup(models.Model):
         log_model = self.env["data.import.log"]
         content_hash = log_model._content_hash(content)
         if log_model.search_count(
-            [("file_name", "=", name), ("content_hash", "=", content_hash)], limit=1
+            [
+                ("file_name", "=", name),
+                ("content_hash", "=", content_hash),
+                ("state", "=", "done"),
+            ],
+            limit=1,
         ):
-            _logger.info("%s was already imported, left in place.", source)
+            _logger.info("%s was imported in full already, left in place.", source)
             return log_model
         attachment = self.env["ir.attachment"].create(
             {"name": name, "datas": base64.b64encode(content)}
