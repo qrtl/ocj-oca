@@ -18,8 +18,7 @@ class DataImportLog(models.Model):
     def _write_rejected_file(self):
         """Write the units that were rejected, for the sender to resend.
 
-        Only the rejected units go out: the rest of the file was imported, and
-        sending the whole of it back would ask for the good units again.
+        Only those: the rest of the file was imported.
         """
         self.ensure_one()
         rejected = self._rejected_file()
@@ -34,10 +33,8 @@ class DataImportLog(models.Model):
     def _finalize_file(self):
         """Release the source file once the import is over.
 
-        A file that was read ends up in the done directory whatever came of its
-        units: it was received whole, and the rejected units travel separately.
-        A file that could not be read at all is isolated as a whole instead,
-        since there is nothing in it to isolate unit by unit.
+        A file that was read is filed as done whatever came of its units; one
+        that could not be read is isolated whole, having no units to isolate.
         """
         super()._finalize_file()
         pickup = self.pickup_id

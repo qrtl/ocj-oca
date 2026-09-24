@@ -37,8 +37,7 @@ class DataImportPickup(models.Model):
         "Processing Path",
         required=True,
         default="processing",
-        help="Directory a file is held in while it is being imported, so that it "
-        "is picked up only once.",
+        help="Directory a file is held in while it is being imported.",
     )
     path_done = fields.Char("Done Path", required=True, default="done")
     path_error = fields.Char(
@@ -57,8 +56,8 @@ class DataImportPickup(models.Model):
     encoding = fields.Char(default="utf-8")
     column_names = fields.Text(
         help="Names to give the columns, one per line, in the order they appear "
-        "in the files of this pick-up. Leave empty to take them from the header "
-        "row. Set them when the interface defines its columns by position.",
+        "in the files of this pick-up. Leave empty to take them from the "
+        "header row.",
     )
     has_header = fields.Boolean(
         default=True,
@@ -81,25 +80,17 @@ class DataImportPickup(models.Model):
     def _take_in(self, name):
         """Create the log for one file and hold the file while it is imported.
 
-        Returns the log, or an empty recordset when there is nothing left to
-        import from the file.
-
-        A sender corrects a rejected unit by sending the same file again, so an
-        identical file is taken in again whenever the import it belongs to left
-        something behind. It is only left in place when that earlier import
-        succeeded whole, since there would be nothing in it to import.
+        Returns the log, or an empty recordset when there is nothing to import:
+        a sender resends a whole file to correct a unit of it, so an identical
+        file is skipped only when its earlier import succeeded whole.
         """
         self.ensure_one()
         fs = self.backend_id.fs
         source = f"{self.path_in}/{name}"
         held = f"{self.path_processing}/{name}"
         if fs.exists(held):
-            # An import of this name is still running. Taking the new file in
-            # would overwrite the copy that import is holding, and the two logs
-            # would then fight over one path: whichever finished first would
-            # file the other one's content, and the second would find nothing
-            # left to report its rejected units from. It stays where it is and
-            # is taken in by a later scan.
+            # Taking it in would overwrite the copy the running import holds,
+            # and both logs would then claim one path.
             _logger.info("%s is still being imported, %s left in place.", held, source)
             return self.env["data.import.log"]
         with fs.open(source, "rb") as fh:
@@ -148,11 +139,8 @@ class DataImportPickup(models.Model):
                 continue
             logs |= log
             log._enqueue_parse()
-            # Commit each file on its own: its source has already moved on
-            # the remote filesystem, which no rollback undoes, so a failure
-            # on a later file would otherwise leave that file held aside
-            # with no log to account for it. This is the recognized case
-            # for committing: a cron importing a batch of independent items.
+            # Its source has already moved on the remote filesystem, which no
+            # rollback undoes, so a later failure must not discard its log.
             if not modules.module.current_test:
                 # pylint: disable=invalid-commit
                 self.env.cr.commit()
@@ -161,18 +149,15 @@ class DataImportPickup(models.Model):
     def _scan(self):
         """Take in every file waiting for each pick-up.
 
-        A pick-up whose storage cannot be reached, or whose configuration is
-        incomplete, must not stop the others: they are separate feeds that
-        happen to share a cron, and one counterpart being unreachable is not a
-        reason to stop importing from the rest.
+        Pick-ups are separate feeds sharing a cron, so one that cannot be
+        reached must not stop the others.
         """
         logs = self.env["data.import.log"]
         for pickup in self:
             try:
                 logs = pickup._scan_one(logs)
             except Exception:
-                # Discard whatever the failed pick-up left half done, so the
-                # next one starts from a sound transaction. Tests own theirs.
+                # The next pick-up must start from a sound transaction.
                 if not modules.module.current_test:
                     self.env.cr.rollback()
                 _logger.exception("Pick-up %s could not be scanned.", pickup.name)
@@ -182,16 +167,15 @@ class DataImportPickup(models.Model):
     def _cron_scan(self):
         """Scan every pick-up, unless a previous run is still going.
 
-        The lock is held on the session rather than the transaction, since the
-        scan commits every file it takes in and would otherwise release it
-        halfway through.
+        The lock is session-level because the scan commits per file, which
+        would release a transaction-level one halfway through.
         """
         self.env.cr.execute("SELECT pg_try_advisory_lock(%s)", (SCAN_LOCK_KEY,))
         if not self.env.cr.fetchone()[0]:
             _logger.info("Another scan is running, skipped.")
             return
         try:
-            # Pick-ups are configuration: a handful of records, all wanted.
+            # Configuration: a handful of records, all wanted.
             # pylint: disable=no-search-all
             self.search([])._scan()
         finally:
