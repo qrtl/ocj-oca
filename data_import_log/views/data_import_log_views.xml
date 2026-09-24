@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <odoo>
-    <!-- Base views that should be extended as necessary. There is no action defined in
-    this module. -->
+    <!-- The views are kept plain so that a module implementing an import can
+    extend them with what it knows about the data. -->
     <record id="data_import_log_view_form" model="ir.ui.view">
         <field name="name">data.import.log.form</field>
         <field name="model">data.import.log</field>
@@ -99,6 +99,12 @@
             </search>
         </field>
     </record>
+    <record id="data_import_log_action" model="ir.actions.act_window">
+        <field name="name">Data Import Logs</field>
+        <field name="res_model">data.import.log</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{"search_default_state": 1}</field>
+    </record>
     <!-- This menu is to have a place to aggregate all the import history.
     Let users have access to the menu by assigning the 'Data Import Log' group
     to them as necessary. -->
@@ -109,7 +115,8 @@
     />
     <menuitem
         id="menu_data_import_log"
-        name="Data Import"
+        name="Data Import Logs"
+        action="data_import_log_action"
         parent="data_import_main_menu"
         sequence="10"
     />
