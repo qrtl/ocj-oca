@@ -33,6 +33,14 @@ class TestDataImportSweeper(DataImportCase):
         self.assertEqual(log.unit_failed, 1)
         self.assertTrue(log.error_ids)
 
+    def test_log_that_was_never_parsed_is_closed(self):
+        log = self._create_log()
+        log.date_start = fields.Datetime.now() - timedelta(minutes=120)
+        self.assertEqual(log.state, "pending")
+        self.env["data.import.log"]._cron_sweep_stuck_logs()
+        self.assertEqual(log.state, "error")
+        self.assertTrue(log.file_error)
+
     def test_recent_log_is_left_alone(self):
         log = self._stuck_log(minutes=5)
         self.env["data.import.log"]._cron_sweep_stuck_logs()

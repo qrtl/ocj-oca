@@ -1,11 +1,17 @@
 # Copyright 2026 Quartile (https://www.quartile.co)
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-from odoo import models
+from odoo import fields, models
 
 
 class QueueJob(models.Model):
     _inherit = "queue.job"
+
+    data_import_settled = fields.Boolean(
+        readonly=True,
+        help="Whether the unit this job imports has already been accounted for "
+        "on its import log. A job that is requeued must not count twice.",
+    )
 
     def write(self, vals):
         res = super().write(vals)
@@ -22,9 +28,18 @@ class QueueJob(models.Model):
         and where the unit can be accounted for.
         """
         for job in self:
-            if job.model_name != "data.import.log" or job.method_name != "_run_unit":
+            if job.model_name != "data.import.log":
                 continue
             log = job.records
-            if len(log) != 1 or log.state != "processing":
+            if len(log) != 1:
                 continue
-            log._settle_failed_unit(job.kwargs.get("unit_key"), job.exc_info or "")
+            if job.method_name == "_parse_file":
+                # The file was never read, so there are no units to account for.
+                if log.state == "pending":
+                    log._fail_file(job.exc_info or "")
+                continue
+            if job.method_name != "_run_unit" or log.state != "processing":
+                continue
+            if job.data_import_settled:
+                continue
+            log._settle_failed_unit(job, job.kwargs.get("unit_key"), job.exc_info or "")

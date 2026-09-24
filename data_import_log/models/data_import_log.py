@@ -6,11 +6,16 @@ import csv
 import datetime
 import hashlib
 import io
+import logging
 
 from markupsafe import Markup
 
 from odoo import api, fields, models
 from odoo.exceptions import UserError
+
+from odoo.addons.queue_job.exception import RetryableJobError
+
+_logger = logging.getLogger(__name__)
 
 try:
     import openpyxl
@@ -308,12 +313,20 @@ class DataImportLog(models.Model):
         self.ensure_one()
         try:
             fieldnames, rows = self._read_rows()
-        except UserError as err:
-            # The file is unreadable, which is not a unit failing but the whole
-            # file failing, and no retry will change that.
-            self._fail_file(str(err))
+            units = self._group_rows(fieldnames, rows)
+        except RetryableJobError:
+            # The file may still be readable on the next attempt.
+            raise
+        except Exception as err:
+            # The file cannot be made sense of, which is not a unit failing but
+            # the whole file failing, and no retry will change that. A reader
+            # raises whatever its library raises, so this cannot be narrowed to
+            # the errors we produce ourselves: a truncated Excel file, or a
+            # grouping that chokes on the data, would otherwise leave the file
+            # waiting for units that were never scheduled.
+            _logger.exception("%s could not be parsed.", self.file_name)
+            self._fail_file(str(err) or err.__class__.__name__)
             return
-        units = self._group_rows(fieldnames, rows)
         self._start_processing(len(units))
         for unit_key, unit_rows in units.items():
             self._enqueue_unit(unit_key, unit_rows)
@@ -346,6 +359,28 @@ class DataImportLog(models.Model):
         )
         self.with_delay(description=description)._run_unit(unit_key=unit_key, rows=rows)
 
+    def _current_job(self):
+        """Return the job running this method, if it is running in one."""
+        uuid = self.env.context.get("job_uuid")
+        if not uuid:
+            return self.env["queue.job"]
+        return self.env["queue.job"].sudo().search([("uuid", "=", uuid)], limit=1)
+
+    def _settle_unit_once(self, job, failed=False):
+        """Settle a unit unless its job has already been accounted for.
+
+        A failed job is settled by the failure hook, and an operator requeuing
+        it runs the same unit again. Without this, the unit would be counted
+        twice, the counters would reach the total early, and the file would be
+        closed while other units were still to run.
+        """
+        self.ensure_one()
+        if job and job.data_import_settled:
+            return False
+        if job:
+            job.sudo().data_import_settled = True
+        return self._settle_unit(failed=failed)
+
     def _run_unit(self, unit_key, rows):
         """Import one unit and account for it, whatever its outcome."""
         self.ensure_one()
@@ -357,10 +392,10 @@ class DataImportLog(models.Model):
                     for error in errors
                 ]
             )
-        if self._settle_unit(failed=bool(errors)):
+        if self._settle_unit_once(self._current_job(), failed=bool(errors)):
             self._enqueue_finalizer()
 
-    def _settle_failed_unit(self, unit_key, reason):
+    def _settle_failed_unit(self, job, unit_key, reason):
         """Account for a unit whose job failed outside of its own transaction."""
         self.ensure_one()
         self.env["data.import.error"].create(
@@ -371,7 +406,7 @@ class DataImportLog(models.Model):
                 "error_message": reason,
             }
         )
-        if self._settle_unit(failed=True):
+        if self._settle_unit_once(job, failed=True):
             self._enqueue_finalizer()
 
     def _enqueue_finalizer(self):
@@ -453,7 +488,7 @@ class DataImportLog(models.Model):
         jobs = self.env["queue.job"].search(
             [
                 ("model_name", "=", "data.import.log"),
-                ("method_name", "in", ["_run_unit", "_finalize"]),
+                ("method_name", "in", ["_parse_file", "_run_unit", "_finalize"]),
                 (
                     "state",
                     "in",
@@ -472,12 +507,17 @@ class DataImportLog(models.Model):
         """
         deadline = fields.Datetime.now() - datetime.timedelta(minutes=age_minutes)
         logs = self.search(
-            [("state", "=", "processing"), ("date_start", "<", deadline)]
+            [("state", "in", ["pending", "processing"]), ("date_start", "<", deadline)]
         )
         if not logs:
             return
         busy_ids = self._busy_log_ids()
         for log in logs - self.browse(busy_ids):
+            if log.state == "pending":
+                # Nothing read it, and no job is left to: the file never got as
+                # far as having units, so it fails as a file.
+                log._fail_file(self.env._("The file was taken in but never parsed."))
+                continue
             missing = log.unit_total - log.unit_settled
             if missing > 0:
                 log.env["data.import.error"].create(

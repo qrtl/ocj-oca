@@ -174,3 +174,58 @@ class TestDataImportJob(DataImportCase):
             [list(r) for r in back.active.iter_rows(values_only=True)],
             [["key", "qty"], ["D-1", "2"]],
         )
+
+    def test_requeued_job_does_not_settle_its_unit_twice(self):
+        log = self._create_log()
+        log._start_processing(2)
+        job = self.env["queue.job"].create(
+            {
+                "uuid": "test-requeued-unit",
+                "model_name": "data.import.log",
+                "method_name": "_run_unit",
+                "records": log,
+                "args": (),
+                "kwargs": {"unit_key": "D-001", "rows": []},
+                "state": "started",
+                "exc_info": "Traceback: boom",
+            }
+        )
+        job.write({"state": "failed"})
+        self.assertEqual(log.unit_settled, 1)
+        # An operator requeues the failed job and this time it succeeds.
+        job.write({"state": "pending"})
+        with patch(f"{MODEL}._import_unit", return_value=[]):
+            log.with_context(job_uuid=job.uuid)._run_unit("D-001", [])
+        # The unit stays settled once, so the file waits for the other unit.
+        self.assertEqual(log.unit_settled, 1)
+        self.assertEqual(log.state, "processing")
+
+    def test_unreadable_excel_file_is_closed(self):
+        # Not a zip archive at all, so openpyxl raises before we see a row.
+        log = self._create_log(
+            content=b"not an excel file", file_name="feed.xlsx", file_format="xlsx"
+        )
+        log._parse_file()
+        self.assertTrue(log.file_error)
+        self.assertEqual(log.state, "error")
+        self.assertTrue(log.error_ids)
+
+    def test_grouping_that_raises_closes_the_file(self):
+        log = self._create_log()
+
+        def boom(self, fieldnames, rows):
+            raise ValueError("cannot group these rows")
+
+        with patch(f"{MODEL}._group_rows", boom):
+            log._parse_file()
+        self.assertTrue(log.file_error)
+        self.assertEqual(log.state, "error")
+        self.assertIn("cannot group", log.error_ids.error_message)
+
+    def test_transient_parse_failure_is_retried(self):
+        log = self._create_log()
+        with patch(f"{MODEL}._read_rows", side_effect=RetryableJobError("locked")):
+            with self.assertRaises(RetryableJobError):
+                log._parse_file()
+        self.assertFalse(log.file_error)
+        self.assertEqual(log.state, "pending")
