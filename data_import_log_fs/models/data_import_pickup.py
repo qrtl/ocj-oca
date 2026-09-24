@@ -55,6 +55,15 @@ class DataImportPickup(models.Model):
         [("csv", "CSV"), ("xlsx", "Excel")], required=True, default="csv"
     )
     encoding = fields.Char(default="utf-8")
+    column_names = fields.Text(
+        help="Names to give the columns, one per line, in the order they appear "
+        "in the files of this pick-up. Leave empty to take them from the header "
+        "row. Set them when the interface defines its columns by position.",
+    )
+    has_header = fields.Boolean(
+        default=True,
+        help="Whether the first row of the files holds the column names.",
+    )
     log_ids = fields.One2many("data.import.log", "pickup_id", string="Import Logs")
 
     _name_uniq = models.Constraint("UNIQUE (name)", "A pick-up name must be unique.")
@@ -107,6 +116,8 @@ class DataImportPickup(models.Model):
                 "content_hash": content_hash,
                 "file_format": self.file_format,
                 "encoding": self.encoding,
+                "column_names": self.column_names,
+                "has_header": self.has_header,
                 "company_id": self.company_id.id,
             }
         )

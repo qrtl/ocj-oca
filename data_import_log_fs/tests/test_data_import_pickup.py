@@ -57,6 +57,18 @@ class TestDataImportPickup(TransactionCase):
         self.assertEqual(self._names("done"), ["feed.csv"])
         self.assertEqual(self._names("processing"), [])
 
+    def test_column_names_of_the_pickup_reach_the_log(self):
+        # The header says something else: the columns are read by position.
+        self.pickup.column_names = "doc\nqty"
+        self._put("feed.csv", b"A,B\nD-1,2\n")
+        with patch(f"{LOG_MODEL}._import_unit", return_value=[]):
+            logs = self.pickup._scan()
+        self.assertEqual(logs.column_names, "doc\nqty")
+        self.assertEqual(
+            logs._read_rows(), (["doc", "qty"], [{"doc": "D-1", "qty": "2"}])
+        )
+        self.pickup.column_names = False
+
     def test_incomplete_file_is_left_alone(self):
         self._put("feed.csv.tmp")
         logs = self.pickup._scan()

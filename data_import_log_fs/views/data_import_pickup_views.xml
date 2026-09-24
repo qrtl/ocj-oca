@@ -23,6 +23,8 @@
                             <field name="filename_pattern" />
                             <field name="file_format" />
                             <field name="encoding" invisible="file_format != 'csv'" />
+                            <field name="has_header" />
+                            <field name="column_names" />
                         </group>
                         <group string="Directories">
                             <field name="path_in" />
