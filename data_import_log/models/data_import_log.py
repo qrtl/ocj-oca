@@ -54,8 +54,7 @@ class DataImportLog(models.Model):
     column_names = fields.Text(
         help="Names to give the columns, one per line, in the order they appear "
         "in the file. Leave empty to take them from the header row. Set them "
-        "when the interface defines its columns by position, so that a header "
-        "that is absent, renamed or reordered cannot change what is read.",
+        "when the interface defines its columns by position.",
     )
     has_header = fields.Boolean(
         default=True,
@@ -88,7 +87,7 @@ class DataImportLog(models.Model):
         "Unreadable",
         readonly=True,
         help="Set when the file itself could not be read, as opposed to some of "
-        "its units being rejected. Such a file is isolated whole.",
+        "its units being rejected.",
     )
     date_start = fields.Datetime(
         "Started On", readonly=True, default=fields.Datetime.now
@@ -147,8 +146,7 @@ class DataImportLog(models.Model):
     def _rejected_rows(self):
         """Return ``(fieldnames, rows)`` of the units that were rejected.
 
-        The rows are taken from the file itself rather than kept aside, so the
-        file of rejected units holds what was sent, not a rendering of it.
+        Taken from the file itself, so what goes back is what was sent.
         """
         self.ensure_one()
         keys = set(self.error_ids.mapped("unit_key")) - {False, ""}
@@ -168,16 +166,11 @@ class DataImportLog(models.Model):
         return self.file_name, self._write_rows(fieldnames, rows)
 
     def _settle_unit(self, failed=False):
-        """Record one unit as having reached a final outcome.
+        """Record one unit as settled, and return whether it was the last.
 
-        Return whether this was the last unit of the file, which makes the
-        caller responsible for finalizing the log.
-
-        The counters are moved by a single statement so that the row lock
-        serializes the workers settling units of the same file concurrently;
-        a read-modify-write through the ORM would lose increments. It runs in
-        the caller's transaction on purpose: a unit that is rolled back after
-        an error must not count as settled either.
+        One statement, so the row lock serializes concurrent workers where a
+        read-modify-write would lose increments. It runs in the caller's
+        transaction, so a rolled-back unit does not stay settled.
         """
         self.ensure_one()
         # The counters are read back from the table, so any pending ORM value
@@ -199,11 +192,7 @@ class DataImportLog(models.Model):
 
     @api.model
     def _normalize_cell(self, value):
-        """Return a spreadsheet cell as the string a CSV would have held.
-
-        Excel hands back typed values, so the same feed read as xlsx and as CSV
-        would otherwise reach the handlers as different Python types.
-        """
+        """Return a spreadsheet cell as the string a CSV would have held."""
         if value is None:
             return ""
         if isinstance(value, bool):
@@ -261,12 +250,8 @@ class DataImportLog(models.Model):
     def _read_rows(self):
         """Return the file content as ``(fieldnames, rows)``.
 
-        ``rows`` are dicts keyed by the column names, with every value a string,
-        so a handler reads a CSV feed and an Excel feed the same way.
-
-        The names come from ``column_names`` when it is set, and the columns are
-        then read by position: an interface that defines its layout by position
-        must not change meaning because a header was renamed or reordered.
+        Rows are dicts of strings, keyed by ``column_names`` when it is set —
+        read by position then — and by the header row otherwise.
         """
         self.ensure_one()
         content = base64.b64decode(self.attachment_id.datas or b"")
@@ -294,8 +279,8 @@ class DataImportLog(models.Model):
     def _group_rows(self, fieldnames, rows):
         """Return the units of the file as ``{key: rows}``.
 
-        A unit is what the import is atomic over. By default every row is its
-        own unit; override to group rows that have to be imported together.
+        A unit is what the import is atomic over. Every row is one by default;
+        override to group rows that have to be imported together.
         """
         return {str(index): [row] for index, row in enumerate(rows, start=1)}
 
@@ -315,15 +300,11 @@ class DataImportLog(models.Model):
             fieldnames, rows = self._read_rows()
             units = self._group_rows(fieldnames, rows)
         except RetryableJobError:
-            # The file may still be readable on the next attempt.
             raise
         except Exception as err:
-            # The file cannot be made sense of, which is not a unit failing but
-            # the whole file failing, and no retry will change that. A reader
-            # raises whatever its library raises, so this cannot be narrowed to
-            # the errors we produce ourselves: a truncated Excel file, or a
-            # grouping that chokes on the data, would otherwise leave the file
-            # waiting for units that were never scheduled.
+            # A reader raises whatever its library raises, so this cannot be
+            # narrowed: anything uncaught would leave the file waiting for
+            # units that were never scheduled.
             _logger.exception("%s could not be parsed.", self.file_name)
             self._fail_file(str(err) or err.__class__.__name__)
             return
@@ -338,10 +319,9 @@ class DataImportLog(models.Model):
         """Import one unit of the file, and return the errors it was rejected for.
 
         To be implemented by the module that knows the data: return an empty
-        list when the unit is imported, a list of values for
-        ``data.import.error`` when it is rejected as a whole, and raise
-        ``RetryableJobError`` when the failure is transient and the unit should
-        be attempted again.
+        list when the unit is imported, values for ``data.import.error`` when
+        it is rejected, and raise ``RetryableJobError`` when the failure is
+        transient.
         """
         raise NotImplementedError
 
@@ -369,10 +349,8 @@ class DataImportLog(models.Model):
     def _settle_unit_once(self, job, failed=False):
         """Settle a unit unless its job has already been accounted for.
 
-        A failed job is settled by the failure hook, and an operator requeuing
-        it runs the same unit again. Without this, the unit would be counted
-        twice, the counters would reach the total early, and the file would be
-        closed while other units were still to run.
+        The failure hook settles a failed job, and requeuing it runs the same
+        unit again; counting it twice would close the file early.
         """
         self.ensure_one()
         if job and job.data_import_settled:
@@ -420,8 +398,7 @@ class DataImportLog(models.Model):
     def _notify_outcome(self):
         """Report an import that did not fully succeed.
 
-        Posted on the log rather than mailed directly, so that whoever should
-        hear about it is a matter of who follows the record.
+        Posted on the log, so the recipients are whoever follows it.
         """
         self.ensure_one()
         body = Markup("<p>%s</p>") % self.env._(
@@ -446,8 +423,7 @@ class DataImportLog(models.Model):
     def _finalize(self):
         """Close the log once every unit has settled.
 
-        Guarded on the state, so that settling a unit twice, or the sweeper
-        racing a last unit, cannot finalize the same file twice.
+        Guarded on the state, so a file cannot be finalized twice.
         """
         self.ensure_one()
         if self.state != "processing":
@@ -500,10 +476,10 @@ class DataImportLog(models.Model):
 
     @api.model
     def _cron_sweep_stuck_logs(self, age_minutes=60):
-        """Close files whose units will never settle.
+        """Close files nothing is left to close.
 
-        A job deleted or cancelled by hand never settles its unit, which would
-        leave the file in progress and its source where it was picked up.
+        A job deleted or cancelled by hand never settles its unit, leaving the
+        file in progress and its source where it was picked up.
         """
         deadline = fields.Datetime.now() - datetime.timedelta(minutes=age_minutes)
         logs = self.search(
@@ -514,8 +490,7 @@ class DataImportLog(models.Model):
         busy_ids = self._busy_log_ids()
         for log in logs - self.browse(busy_ids):
             if log.state == "pending":
-                # Nothing read it, and no job is left to: the file never got as
-                # far as having units, so it fails as a file.
+                # Never parsed, so it has no units to account for.
                 log._fail_file(self.env._("The file was taken in but never parsed."))
                 continue
             missing = log.unit_total - log.unit_settled

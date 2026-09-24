@@ -20,12 +20,11 @@ class QueueJob(models.Model):
         return res
 
     def _settle_failed_import_units(self):
-        """Settle the unit of an import job that ended in failure.
+        """Account for an import job that ended in failure.
 
-        A failing job leaves nothing behind: its transaction, and with it any
-        error row it wrote, is rolled back before the failure is recorded. The
-        failure is recorded in a separate environment, which is where this runs
-        and where the unit can be accounted for.
+        A failing job's transaction, and any error row it wrote, is rolled
+        back before the failure is recorded; this runs in the environment that
+        records it, which is the one that survives.
         """
         for job in self:
             if job.model_name != "data.import.log":
@@ -34,7 +33,7 @@ class QueueJob(models.Model):
             if len(log) != 1:
                 continue
             if job.method_name == "_parse_file":
-                # The file was never read, so there are no units to account for.
+                # Never read, so there are no units to account for.
                 if log.state == "pending":
                     log._fail_file(job.exc_info or "")
                 continue
