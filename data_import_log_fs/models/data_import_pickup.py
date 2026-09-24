@@ -124,30 +124,47 @@ class DataImportPickup(models.Model):
         fs.mv(source, f"{self.path_processing}/{name}")
         return log
 
+    def _scan_one(self, logs):
+        """Take in every file waiting for this pick-up, and return the logs."""
+        self.ensure_one()
+        fs = self.backend_id.fs
+        if not fs.exists(self.path_in):
+            return logs
+        names = [path.rsplit("/", 1)[-1] for path in fs.ls(self.path_in, detail=False)]
+        for name in self._matching_names(names):
+            log = self._take_in(name)
+            if not log:
+                continue
+            logs |= log
+            log._enqueue_parse()
+            # Commit each file on its own: its source has already moved on
+            # the remote filesystem, which no rollback undoes, so a failure
+            # on a later file would otherwise leave that file held aside
+            # with no log to account for it. This is the recognized case
+            # for committing: a cron importing a batch of independent items.
+            if not modules.module.current_test:
+                # pylint: disable=invalid-commit
+                self.env.cr.commit()
+        return logs
+
     def _scan(self):
-        """Take in every file waiting in the incoming directory."""
+        """Take in every file waiting for each pick-up.
+
+        A pick-up whose storage cannot be reached, or whose configuration is
+        incomplete, must not stop the others: they are separate feeds that
+        happen to share a cron, and one counterpart being unreachable is not a
+        reason to stop importing from the rest.
+        """
         logs = self.env["data.import.log"]
         for pickup in self:
-            fs = pickup.backend_id.fs
-            if not fs.exists(pickup.path_in):
-                continue
-            names = [
-                path.rsplit("/", 1)[-1] for path in fs.ls(pickup.path_in, detail=False)
-            ]
-            for name in pickup._matching_names(names):
-                log = pickup._take_in(name)
-                if not log:
-                    continue
-                logs |= log
-                log._enqueue_parse()
-                # Commit each file on its own: its source has already moved on
-                # the remote filesystem, which no rollback undoes, so a failure
-                # on a later file would otherwise leave that file held aside
-                # with no log to account for it. This is the recognized case
-                # for committing: a cron importing a batch of independent items.
+            try:
+                logs = pickup._scan_one(logs)
+            except Exception:
+                # Discard whatever the failed pick-up left half done, so the
+                # next one starts from a sound transaction. Tests own theirs.
                 if not modules.module.current_test:
-                    # pylint: disable=invalid-commit
-                    self.env.cr.commit()
+                    self.env.cr.rollback()
+                _logger.exception("Pick-up %s could not be scanned.", pickup.name)
         return logs
 
     @api.model

@@ -178,3 +178,17 @@ class TestDataImportPickup(TransactionCase):
         with patch(f"{LOG_MODEL}._import_unit", return_value=[]):
             self.pickup._scan()
         self.assertEqual(self._names("error"), [])
+
+    def test_one_broken_pickup_does_not_stop_the_others(self):
+        # A backend that cannot be reached: no host for the sftp protocol.
+        broken_backend = self.env["fs.storage"].create(
+            {"name": "Broken", "code": "broken_test", "protocol": "sftp"}
+        )
+        broken = self.env["data.import.pickup"].create(
+            {"name": "Broken Feed", "backend_id": broken_backend.id}
+        )
+        self._put("feed.csv")
+        with patch(f"{LOG_MODEL}._import_unit", return_value=[]):
+            logs = (broken | self.pickup)._scan()
+        self.assertEqual(logs.file_name, "feed.csv")
+        self.assertEqual(self._names("done"), ["feed.csv"])
