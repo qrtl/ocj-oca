@@ -92,12 +92,23 @@ class DataImportPickup(models.Model):
         self.ensure_one()
         fs = self.backend_id.fs
         source = f"{self.path_in}/{name}"
+        held = f"{self.path_processing}/{name}"
+        if fs.exists(held):
+            # An import of this name is still running. Taking the new file in
+            # would overwrite the copy that import is holding, and the two logs
+            # would then fight over one path: whichever finished first would
+            # file the other one's content, and the second would find nothing
+            # left to report its rejected units from. It stays where it is and
+            # is taken in by a later scan.
+            _logger.info("%s is still being imported, %s left in place.", held, source)
+            return self.env["data.import.log"]
         with fs.open(source, "rb") as fh:
             content = fh.read()
         log_model = self.env["data.import.log"]
         content_hash = log_model._content_hash(content)
         if log_model.search_count(
             [
+                ("pickup_id", "=", self.id),
                 ("file_name", "=", name),
                 ("content_hash", "=", content_hash),
                 ("state", "=", "done"),

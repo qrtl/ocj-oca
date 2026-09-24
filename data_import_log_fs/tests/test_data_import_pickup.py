@@ -69,6 +69,21 @@ class TestDataImportPickup(TransactionCase):
         )
         self.pickup.column_names = False
 
+    def test_file_still_being_imported_is_not_overwritten(self):
+        self._put("feed.csv")
+        # The first import is still in flight: its units were never run.
+        with patch(f"{LOG_MODEL}._enqueue_unit"):
+            first = self.pickup._scan()
+        self.assertEqual(first.state, "processing")
+        # The sender resends the same name with corrected content.
+        self._put("feed.csv", b"key,qty\nD-9,9\n")
+        second = self.pickup._scan()
+        self.assertFalse(second)
+        # The held copy is untouched and the new one waits its turn.
+        with self.fs.open("processing/feed.csv", "rb") as fh:
+            self.assertEqual(fh.read(), FEED)
+        self.assertEqual(self._names("in"), ["feed.csv"])
+
     def test_incomplete_file_is_left_alone(self):
         self._put("feed.csv.tmp")
         logs = self.pickup._scan()
