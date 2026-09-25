@@ -52,7 +52,8 @@ class AccountBilling(models.Model):
     payment_amount = fields.Monetary(
         compute="_compute_carryover_amounts",
         store=True,
-        help="Payments received on previous billing invoices.",
+        help="Net decrease of the receivables billed on the previous billing, i.e. "
+        "the previous billed amount less what still stands open of it.",
     )
     carryover_amount = fields.Monetary(
         compute="_compute_carryover_amounts",
