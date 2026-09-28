@@ -6,6 +6,7 @@ from unittest.mock import patch
 import fsspec
 
 from odoo.tests import TransactionCase
+from odoo.tools import mute_logger
 
 LOG_MODEL = "odoo.addons.data_import_log.models.data_import_log.DataImportLog"
 FEED = b"key,qty\nD-1,2\nD-2,3\n"
@@ -161,9 +162,10 @@ class TestDataImportPickup(TransactionCase):
         self.fs.rm("in", recursive=True)
         self.assertFalse(self.pickup._scan())
 
+    @mute_logger("odoo.addons.data_import_log.models.data_import_log")
     def test_unreadable_file_is_isolated_whole(self):
-        # CP932 content read as UTF-8: the file itself cannot be read.
-        self._put("feed.csv", "伝票,数量\nD-1,2\n".encode("cp932"))
+        # Latin-1 content read as UTF-8: the file itself cannot be read.
+        self._put("feed.csv", "réf,qty\nD-1,2\n".encode("iso-8859-1"))
         logs = self.pickup._scan()
         self.assertTrue(logs.file_error)
         self.assertEqual(logs.state, "error")
@@ -194,6 +196,7 @@ class TestDataImportPickup(TransactionCase):
             self.pickup._scan()
         self.assertEqual(self._names("error"), [])
 
+    @mute_logger("odoo.addons.data_import_log_fs.models.data_import_pickup")
     def test_one_broken_pickup_does_not_stop_the_others(self):
         # A backend that cannot be reached: no host for the sftp protocol.
         broken_backend = self.env["fs.storage"].create(
