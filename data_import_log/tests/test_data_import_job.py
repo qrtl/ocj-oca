@@ -3,6 +3,8 @@
 
 from unittest.mock import patch
 
+from odoo.tools import mute_logger
+
 from odoo.addons.queue_job.exception import RetryableJobError
 
 from .common import DataImportCase
@@ -121,9 +123,10 @@ class TestDataImportJob(DataImportCase):
         self.assertEqual(log.state, "done")
         self.assertFalse(log.error_ids)
 
+    @mute_logger("odoo.addons.data_import_log.models.data_import_log")
     def test_unreadable_file_is_flagged_and_closed(self):
-        # CP932 content read as UTF-8: the file itself cannot be read.
-        log = self._create_log(content="伝票,数量\nD-1,2\n".encode("cp932"))
+        # Latin-1 content read as UTF-8: the file itself cannot be read.
+        log = self._create_log(content="réf,qty\nD-1,2\n".encode("iso-8859-1"))
         log._parse_file()
         self.assertTrue(log.file_error)
         self.assertEqual(log.state, "error")
@@ -200,6 +203,7 @@ class TestDataImportJob(DataImportCase):
         self.assertEqual(log.unit_settled, 1)
         self.assertEqual(log.state, "processing")
 
+    @mute_logger("odoo.addons.data_import_log.models.data_import_log")
     def test_unreadable_excel_file_is_closed(self):
         # Not a zip archive at all, so openpyxl raises before we see a row.
         log = self._create_log(
@@ -210,6 +214,7 @@ class TestDataImportJob(DataImportCase):
         self.assertEqual(log.state, "error")
         self.assertTrue(log.error_ids)
 
+    @mute_logger("odoo.addons.data_import_log.models.data_import_log")
     def test_grouping_that_raises_closes_the_file(self):
         log = self._create_log()
 

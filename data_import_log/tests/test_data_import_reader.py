@@ -9,9 +9,19 @@ from odoo.exceptions import UserError
 
 from .common import DataImportCase
 
-HEADER = ["伝票番号", "数量"]
-ROWS = [{"伝票番号": "D-001", "数量": "3"}, {"伝票番号": "D-002", "数量": "12"}]
-CSV_TEXT = "伝票番号,数量\nD-001,3\nD-002,12\n"
+HEADER = ["reference", "quantity"]
+# A name outside ASCII, so the encoding of the file actually matters.
+ROWS = [
+    {"reference": "D-001", "quantity": "3"},
+    {"reference": "D-002", "quantity": "12"},
+]
+CSV_TEXT = "reference,quantity\nD-001,3\nD-002,12\n"
+LATIN_TEXT = "reference,quantité\nD-001,3\nD-002,12\n"
+LATIN_HEADER = ["reference", "quantité"]
+LATIN_ROWS = [
+    {"reference": "D-001", "quantité": "3"},
+    {"reference": "D-002", "quantité": "12"},
+]
 
 
 class TestDataImportReader(DataImportCase):
@@ -36,12 +46,14 @@ class TestDataImportReader(DataImportCase):
         self.assertEqual(fieldnames, HEADER)
         self.assertEqual(rows, ROWS)
 
-    def test_read_csv_cp932(self):
-        log = self._create_log(content=CSV_TEXT.encode("cp932"), encoding="cp932")
-        self.assertEqual(log._read_rows(), (HEADER, ROWS))
+    def test_read_csv_in_another_encoding(self):
+        log = self._create_log(
+            content=LATIN_TEXT.encode("iso-8859-1"), encoding="iso-8859-1"
+        )
+        self.assertEqual(log._read_rows(), (LATIN_HEADER, LATIN_ROWS))
 
     def test_read_csv_wrong_encoding_is_reported(self):
-        log = self._create_log(content=CSV_TEXT.encode("cp932"))
+        log = self._create_log(content=LATIN_TEXT.encode("iso-8859-1"))
         with self.assertRaises(UserError):
             log._read_rows()
 
@@ -58,13 +70,13 @@ class TestDataImportReader(DataImportCase):
     def test_columns_read_by_position_ignore_the_header(self):
         # The header says something else entirely; position is what counts.
         content = b"A,B\nD-001,3\nD-002,12\n"
-        log = self._create_log(content=content, column_names="伝票番号\n数量")
+        log = self._create_log(content=content, column_names="reference\nquantity")
         self.assertEqual(log._read_rows(), (HEADER, ROWS))
 
     def test_columns_by_position_without_a_header(self):
         content = b"D-001,3\nD-002,12\n"
         log = self._create_log(
-            content=content, column_names="伝票番号\n数量", has_header=False
+            content=content, column_names="reference\nquantity", has_header=False
         )
         self.assertEqual(log._read_rows(), (HEADER, ROWS))
 
@@ -73,11 +85,11 @@ class TestDataImportReader(DataImportCase):
             content=self._xlsx_bytes(),
             file_name="positional.xlsx",
             file_format="xlsx",
-            column_names="伝票番号\n数量",
+            column_names="reference\nquantity",
         )
         self.assertEqual(log._read_rows(), (HEADER, ROWS))
 
     def test_blank_rows_are_dropped(self):
-        content = "伝票番号,数量\nD-001,3\n,\nD-002,12\n".encode()
+        content = b"reference,quantity\nD-001,3\n,\nD-002,12\n"
         log = self._create_log(content=content)
         self.assertEqual(log._read_rows(), (HEADER, ROWS))
