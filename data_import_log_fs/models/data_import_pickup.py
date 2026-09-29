@@ -18,8 +18,14 @@ SCAN_LOCK_KEY = 84213310
 class DataImportPickup(models.Model):
     _name = "data.import.pickup"
     _description = "Data Import Pick-up"
+    _order = "sequence, id"
 
     name = fields.Char(required=True)
+    sequence = fields.Integer(
+        default=10,
+        help="Order the pick-ups are scanned in, for feeds whose files depend "
+        "on one another.",
+    )
     active = fields.Boolean(default=True)
     company_id = fields.Many2one(
         "res.company", "Company", default=lambda self: self.env.company
@@ -153,7 +159,10 @@ class DataImportPickup(models.Model):
         reached must not stop the others.
         """
         logs = self.env["data.import.log"]
-        for pickup in self:
+        # Sorted here rather than relying on the caller: a recordset keeps the
+        # order it was built in, and a feed whose files depend on one another
+        # needs them taken in a known order.
+        for pickup in self.sorted():
             try:
                 logs = pickup._scan_one(logs)
             except Exception:

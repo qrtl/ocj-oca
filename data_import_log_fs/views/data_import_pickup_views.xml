@@ -49,6 +49,7 @@
         <field name="model">data.import.pickup</field>
         <field name="arch" type="xml">
             <list>
+                <field name="sequence" widget="handle" />
                 <field name="name" />
                 <field name="backend_id" />
                 <field name="path_in" />

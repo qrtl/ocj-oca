@@ -85,6 +85,19 @@ class TestDataImportPickup(TransactionCase):
             self.assertEqual(fh.read(), FEED)
         self.assertEqual(self._names("in"), ["feed.csv"])
 
+    def test_pickups_are_scanned_in_sequence(self):
+        # A feed whose files depend on one another needs the pick-ups scanned
+        # in a known order, not in the order they were created.
+        second = self.pickup.copy({"name": "Second Feed", "sequence": 1})
+        scanned = []
+        with patch(
+            "odoo.addons.data_import_log_fs.models.data_import_pickup"
+            ".DataImportPickup._scan_one",
+            lambda self, logs: scanned.append(self.name) or logs,
+        ):
+            (self.pickup | second)._scan()
+        self.assertEqual(scanned, ["Second Feed", self.pickup.name])
+
     def test_incomplete_file_is_left_alone(self):
         self._put("feed.csv.tmp")
         logs = self.pickup._scan()
