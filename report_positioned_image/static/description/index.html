@@ -389,6 +389,10 @@ reports, filtered by company context and always shown when configured</li>
 </ul>
 <p>Images can be assigned to a specific company or left as shared records
 (without company assignment) for use across multiple companies</p>
+<p>An image can also be made <em>conditional</em>: pick a model and a domain, and
+the image is then printed only on the records of that model matching the
+domain. This is how one report can carry, say, a signature stamp for
+some customers and not for others.</p>
 <p><strong>Table of contents</strong></p>
 <div class="contents local topic" id="contents">
 <ul class="simple">
@@ -441,6 +445,16 @@ settings as above</li>
 upload an image, it’s automatically sized to 50mm width with
 proportional height. You can then adjust either dimension and the other
 will update automatically to prevent distortion.</p>
+<p>To show an image on some records only:</p>
+<ol class="arabic simple">
+<li>Open the image in the report’s or the company’s <em>Report Images</em> tab</li>
+<li>Set <em>Condition Model</em> to the model printed by the report, and
+<em>Domain</em> to the records that should carry the image</li>
+</ol>
+<p><strong>Note</strong>: The condition applies to the reports rendering the condition
+model only. A report on any other model keeps printing the image
+unconditionally, so one image can be conditional on one form and always
+shown on another.</p>
 </div>
 <div class="section" id="bug-tracker">
 <h2><a class="toc-backref" href="#toc-entry-2">Bug Tracker</a></h2>
