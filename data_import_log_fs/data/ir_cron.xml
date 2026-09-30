@@ -7,6 +7,6 @@
         <field name="code">model._cron_scan()</field>
         <field name="interval_number">10</field>
         <field name="interval_type">minutes</field>
-        <field name="active" eval="False" />
+        <field name="active" eval="True" />
     </record>
 </odoo>
