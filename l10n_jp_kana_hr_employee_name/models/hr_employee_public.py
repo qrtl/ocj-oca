@@ -8,15 +8,12 @@ class HrEmployeePublic(models.Model):
     _name = "hr.employee.public"
     _inherit = ["hr.employee.public", "kana.mixin", "name.kana.mixin"]
 
+    # Readonly like the other fields this SQL view takes from hr.employee.
     name_kana = fields.Char(readonly=True)
 
     @api.model
     def _get_kana_format(self):
-        """Follow the employee setting rather than resolving one of our own.
-
-        This model is a read-only SQL view: the reading it exposes is the one
-        stored on hr.employee, so a search term has to be normalized to that
-        format. A setting of its own could disagree, and searching the employee
-        directory would then match nothing.
+        """Follow the employee setting: the view exposes what hr.employee stores,
+        so a setting of its own could disagree and make searches match nothing.
         """
         return self.env["hr.employee"]._get_kana_format()
