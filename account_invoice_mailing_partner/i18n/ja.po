@@ -1,0 +1,66 @@
+# Translation of Odoo Server.
+# This file contains the translation of the following modules:
+# 	* account_invoice_mailing_partner
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server 19.0+e\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-09-01 10:30+0000\n"
+"PO-Revision-Date: 2026-09-01 10:30+0000\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: ja\n"
+"Content-Transfer-Encoding: \n"
+"Plural-Forms: \n"
+
+#. module: account_invoice_mailing_partner
+#: model:ir.model,name:account_invoice_mailing_partner.model_res_partner
+msgid "Contact"
+msgstr "連絡先"
+
+#. module: account_invoice_mailing_partner
+#: model:ir.model.fields,help:account_invoice_mailing_partner.field_account_bank_statement_line__invoice_mailing_partner_id
+#: model:ir.model.fields,help:account_invoice_mailing_partner.field_account_move__invoice_mailing_partner_id
+#: model:ir.model.fields,help:account_invoice_mailing_partner.field_res_partner__invoice_mailing_partner_id
+#: model:ir.model.fields,help:account_invoice_mailing_partner.field_res_users__invoice_mailing_partner_id
+msgid ""
+"Contact the invoice document should be addressed to, when it differs from "
+"the billing partner. It is only used to print the recipient address; the "
+"invoice itself is still issued to the billing partner."
+msgstr "請求先とは別に、請求書の宛先とする連絡先です。宛名の印字にのみ使用され、請求自体は請求先に対して行われます。"
+
+#. module: account_invoice_mailing_partner
+#: model:ir.model.fields,field_description:account_invoice_mailing_partner.field_account_bank_statement_line__invoice_mailing_partner_id
+#: model:ir.model.fields,field_description:account_invoice_mailing_partner.field_account_move__invoice_mailing_partner_id
+#: model:ir.model.fields,field_description:account_invoice_mailing_partner.field_res_partner__invoice_mailing_partner_id
+#: model:ir.model.fields,field_description:account_invoice_mailing_partner.field_res_users__invoice_mailing_partner_id
+msgid "Invoice Mailing Address"
+msgstr "請求書送付先"
+
+#. module: account_invoice_mailing_partner
+#: model:ir.model,name:account_invoice_mailing_partner.model_account_move
+msgid "Journal Entry"
+msgstr "仕訳"
+
+#. module: account_invoice_mailing_partner
+#. odoo-python
+#: code:addons/account_invoice_mailing_partner/models/account_move.py:0
+msgid "Please select invoices with the same invoice mailing address."
+msgstr "請求書送付先が同一の請求書を選択してください。"
+
+#. module: account_invoice_mailing_partner
+#: model:ir.model.fields,field_description:account_invoice_mailing_partner.field_account_bank_statement_line__report_partner_id
+#: model:ir.model.fields,field_description:account_invoice_mailing_partner.field_account_move__report_partner_id
+msgid "Report Partner"
+msgstr "レポート宛先"
+
+#. module: account_invoice_mailing_partner
+#: model:ir.model.fields,help:account_invoice_mailing_partner.field_account_bank_statement_line__report_partner_id
+#: model:ir.model.fields,help:account_invoice_mailing_partner.field_account_move__report_partner_id
+msgid ""
+"Technical field holding the contact the invoice document is addressed to, "
+"used by the report to fall back to the billing partner."
+msgstr "請求書の宛名とする連絡先を保持する技術的項目。請求書送付先が未設定の場合は請求先が設定されます。"
