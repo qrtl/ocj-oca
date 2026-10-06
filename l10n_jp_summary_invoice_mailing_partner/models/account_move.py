@@ -11,6 +11,10 @@ class AccountMove(models.Model):
         # The billing defaults its mailing address from the partner, while the selected
         # invoices may carry a document-level override. Pass it as a default so that it
         # is part of the creation values, before the consistency constraint is checked.
+        # When none of them carries one, the billing keeps the default of the partner.
         mailing_partner = self._get_invoice_mailing_partner()
-        self = self.with_context(default_invoice_mailing_partner_id=mailing_partner.id)
+        if mailing_partner:
+            self = self.with_context(
+                default_invoice_mailing_partner_id=mailing_partner.id
+            )
         return super()._create_billing(partner)

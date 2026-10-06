@@ -9,4 +9,5 @@ address instead of the billing partner's one.
 
 Invoices are gathered in a billing only when they share its mailing address, so
 that a customer whose invoices go to different destinations gets one summary
-invoice per destination.
+invoice per destination. Invoices without a mailing address, such as those
+issued before the default was set on the partner, follow the one of the billing.

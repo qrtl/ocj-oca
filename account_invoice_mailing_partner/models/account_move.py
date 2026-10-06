@@ -46,9 +46,13 @@ class AccountMove(models.Model):
             move.report_partner_id = move.invoice_mailing_partner_id or move.partner_id
 
     def _get_invoice_mailing_partner(self):
-        """Return the invoice mailing address shared by all the invoices in self."""
-        mailing_partner = self[:1].invoice_mailing_partner_id
-        if any(move.invoice_mailing_partner_id != mailing_partner for move in self):
+        """Return the invoice mailing address shared by the invoices in self.
+
+        Invoices without a mailing address are ignored, so that they can be gathered
+        with the ones carrying it.
+        """
+        mailing_partner = self.invoice_mailing_partner_id
+        if len(mailing_partner) > 1:
             raise UserError(
                 self.env._(
                     "Please select invoices with the same invoice mailing address."

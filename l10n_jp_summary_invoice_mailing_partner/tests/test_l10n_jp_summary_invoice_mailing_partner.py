@@ -133,3 +133,31 @@ class TestSummaryInvoiceMailingPartner(BaseCommon):
         self.assertEqual(report._get_report_partner(billing), self.partner)
         billing.invoice_mailing_partner_id = self.accounting_firm
         self.assertEqual(report._get_report_partner(billing), self.accounting_firm)
+
+    def test_07_get_moves_includes_invoices_without_mailing_partner(self):
+        invoice_before = self._create_invoice(100)
+        self.partner.invoice_mailing_partner_id = self.head_office
+        invoice_after = self._create_invoice(200)
+        billing = self.env["account.billing"].create(
+            {"partner_id": self.partner.id, "bill_type": "out_invoice"}
+        )
+        billing.compute_lines()
+        self.assertEqual(billing.invoice_mailing_partner_id, self.head_office)
+        self.assertEqual(
+            billing.billing_line_ids.move_id, invoice_before | invoice_after
+        )
+        self.assertFalse(invoice_before.invoice_mailing_partner_id)
+
+    def test_08_create_billing_without_mailing_partner_on_invoices(self):
+        invoice = self._create_invoice(100)
+        self.partner.invoice_mailing_partner_id = self.head_office
+        action = invoice.action_create_billing()
+        billing = self.env["account.billing"].browse(action["res_id"])
+        self.assertEqual(billing.invoice_mailing_partner_id, self.head_office)
+
+    def test_09_create_billing_mixes_empty_and_set_mailing_partner(self):
+        invoice_1 = self._create_invoice(100)
+        invoice_2 = self._create_invoice(200, mailing_partner=self.accounting_firm)
+        action = (invoice_1 | invoice_2).action_create_billing()
+        billing = self.env["account.billing"].browse(action["res_id"])
+        self.assertEqual(billing.invoice_mailing_partner_id, self.accounting_firm)

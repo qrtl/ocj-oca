@@ -63,6 +63,8 @@ class TestAccountInvoiceMailingPartner(AccountTestInvoicingCommon):
         invoice_2 = self._create_invoice(self.customer)
         invoices = invoice_1 | invoice_2
         self.assertEqual(invoices._get_invoice_mailing_partner(), self.mailing_partner)
+        invoice_2.invoice_mailing_partner_id = False
+        self.assertEqual(invoices._get_invoice_mailing_partner(), self.mailing_partner)
         invoice_2.invoice_mailing_partner_id = self.child_contact
         with self.assertRaises(UserError):
             invoices._get_invoice_mailing_partner()

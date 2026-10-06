@@ -39,7 +39,8 @@ class AccountBilling(models.Model):
         for rec in self:
             invoices = rec.billing_line_ids.move_id
             if any(
-                move.invoice_mailing_partner_id != rec.invoice_mailing_partner_id
+                move.invoice_mailing_partner_id
+                and move.invoice_mailing_partner_id != rec.invoice_mailing_partner_id
                 for move in invoices
             ):
                 raise ValidationError(
@@ -51,6 +52,9 @@ class AccountBilling(models.Model):
 
     def _get_moves(self, date, types=False):
         moves = super()._get_moves(date, types=types)
+        # Invoices without a mailing address, such as those issued before the default
+        # was set on the partner, follow the one of the billing.
         return moves.filtered(
-            lambda x: x.invoice_mailing_partner_id == self.invoice_mailing_partner_id
+            lambda x: not x.invoice_mailing_partner_id
+            or x.invoice_mailing_partner_id == self.invoice_mailing_partner_id
         )
