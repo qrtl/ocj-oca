@@ -1,0 +1,62 @@
+# Translation of Odoo Server.
+# This file contains the translation of the following modules:
+# 	* product_invoice_name
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server 19.0+e\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-12 00:38+0000\n"
+"PO-Revision-Date: 2026-10-12 00:38+0000\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: \n"
+"Plural-Forms: \n"
+
+#. module: product_invoice_name
+#: model:ir.model.fields,field_description:product_invoice_name.field_account_move_line__display_name
+#: model:ir.model.fields,field_description:product_invoice_name.field_product_template__display_name
+msgid "Display Name"
+msgstr ""
+
+#. module: product_invoice_name
+#: model:ir.model.fields,field_description:product_invoice_name.field_account_move_line__id
+#: model:ir.model.fields,field_description:product_invoice_name.field_product_template__id
+msgid "ID"
+msgstr ""
+
+#. module: product_invoice_name
+#: model_terms:ir.ui.view,arch_db:product_invoice_name.product_template_form_view
+msgid "Invoice"
+msgstr ""
+
+#. module: product_invoice_name
+#: model:ir.model.fields,field_description:product_invoice_name.field_product_product__invoice_name
+#: model:ir.model.fields,field_description:product_invoice_name.field_product_template__invoice_name
+msgid "Invoice Name"
+msgstr ""
+
+#. module: product_invoice_name
+#: model:ir.model,name:product_invoice_name.model_account_move_line
+msgid "Journal Item"
+msgstr ""
+
+#. module: product_invoice_name
+#: model:ir.model.fields,help:product_invoice_name.field_product_product__invoice_name
+#: model:ir.model.fields,help:product_invoice_name.field_product_template__invoice_name
+msgid ""
+"Printed on customer invoice lines in place of the product name. Leave it "
+"empty to print the product name."
+msgstr ""
+
+#. module: product_invoice_name
+#: model_terms:ir.ui.view,arch_db:product_invoice_name.product_template_form_view
+msgid "Printed on customer invoices instead of the product name"
+msgstr ""
+
+#. module: product_invoice_name
+#: model:ir.model,name:product_invoice_name.model_product_template
+msgid "Product"
+msgstr ""

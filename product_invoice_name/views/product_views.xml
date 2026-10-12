@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Copyright 2026 Quartile
+     License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl). -->
+<odoo>
+    <record id="product_template_form_view" model="ir.ui.view">
+        <field name="name">product.template.form (invoice name)</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_form_view" />
+        <field name="arch" type="xml">
+            <xpath
+                expr="//page[@name='sales']//group[@name='description']"
+                position="before"
+            >
+                <group name="invoice_name" string="Invoice">
+                    <field
+                        name="invoice_name"
+                        placeholder="Printed on customer invoices instead of the product name"
+                    />
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>
