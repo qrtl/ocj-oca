@@ -401,13 +401,15 @@ class TestFieldRemoval(AuditLogRuleCommon):
             }
         )
 
-        cls.auditlog_rule.set_to_confirmed()
+    def setUp(self):
+        super().setUp()
+        self.auditlog_rule.set_to_confirmed()
         # Trigger log creation
-        rec = cls.env["x_test.model"].create({"x_test_field": "test value"})
+        rec = self.env["x_test.model"].create({"x_test_field": "test value"})
         rec.write({"x_test_field": "test value 2"})
 
-        cls.logs = cls.env["auditlog.log"].search(
-            [("res_id", "=", rec.id), ("model_id", "=", cls.test_model.id)]
+        self.logs = self.env["auditlog.log"].search(
+            [("res_id", "=", rec.id), ("model_id", "=", self.test_model.id)]
         )
 
     def assert_values(self):
@@ -533,14 +535,16 @@ class AuditLogRuleTestForUserFields(AuditLogRuleCommon):
         # Updating users_to_exclude_ids
         cls.auditlog_rule.users_to_exclude_ids = [[4, cls.users_to_exclude_ids]]
 
-        # Subscribe auditlog.rule
-        cls.auditlog_rule.set_to_confirmed()
-
         cls.auditlog_log = cls.env["auditlog.log"]
 
+    def setUp(self):
+        super().setUp()
+        # Subscribe auditlog.rule
+        self.auditlog_rule.set_to_confirmed()
+
         # Creating new res.partner
-        cls.testpartner1 = (
-            cls.env["res.partner"]
+        self.testpartner1 = (
+            self.env["res.partner"]
             .with_context(tracking_disable=True)
             .create(
                 {
@@ -551,10 +555,10 @@ class AuditLogRuleTestForUserFields(AuditLogRuleCommon):
         )
 
         # Creating new res.partner from excluded user
-        cls.testpartner2 = (
-            cls.env["res.partner"]
+        self.testpartner2 = (
+            self.env["res.partner"]
             .with_context(tracking_disable=True)
-            .with_user(cls.user.id)
+            .with_user(self.user.id)
             .create(
                 {
                     "name": "testpartner2",
@@ -690,8 +694,11 @@ class AuditLogRuleTestForUserModel(AuditLogRuleCommon):
         cls.group = cls.env.ref("auditlog.group_auditlog_manager")
 
         cls.auditlog_log = cls.env["auditlog.log"]
+
+    def setUp(self):
+        super().setUp()
         # Subscribe auditlog.rule
-        cls.auditlog_rule.set_to_confirmed()
+        self.auditlog_rule.set_to_confirmed()
 
     def test_01_AuditlogFull_field_group_write_log(self):
         """Change group and check successfully created log"""
@@ -741,9 +748,6 @@ class AuditlogFast_excluded_fields(AuditLogRuleCommon):
         # Updating phone in fields_to_exclude_ids
         cls.auditlog_rule.fields_to_exclude_ids = [[4, cls.fields_to_exclude_ids]]
 
-        # Subscribe auditlog.rule
-        cls.auditlog_rule.set_to_confirmed()
-
         cls.auditlog_log = cls.env["auditlog.log"]
 
         # Creating new res.partner
@@ -757,6 +761,11 @@ class AuditlogFast_excluded_fields(AuditLogRuleCommon):
                 }
             )
         )
+
+    def setUp(self):
+        super().setUp()
+        # Subscribe auditlog.rule
+        self.auditlog_rule.set_to_confirmed()
 
     def test_01_AuditlogFast_field_exclude_write_log(self):
         # Checking fields_to_exclude_ids
