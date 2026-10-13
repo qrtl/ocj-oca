@@ -305,10 +305,6 @@ class AuditlogRule(models.Model):
                 if getattr(rule, f"log_{method}") and hasattr(
                     getattr(model_class, method), "origin"
                 ):
-                    # Remove the patch instead of assigning the original method
-                    # back: the registry class is reused when other modules are
-                    # loaded, and an attribute set on it would shadow their
-                    # overrides.
                     delattr(model_class, method)
                     delattr(model_class, f"auditlog_ruled_{method}")
                     updated = True
