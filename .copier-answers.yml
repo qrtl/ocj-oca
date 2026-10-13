@@ -16,7 +16,8 @@ odoo_test_flavor: OCB
 odoo_version: 19.0
 org_name: Odoo Community Association (OCA)
 org_slug: qrtl
-rebel_module_groups: []
+rebel_module_groups:
+- auditlog
 repo_description: ''
 repo_name: OCJ OCA
 repo_slug: ocj-oca
