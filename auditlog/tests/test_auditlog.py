@@ -4,6 +4,7 @@
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl).
 
 from odoo.fields import Command
+from odoo.tools import mute_logger
 
 from odoo.addons.base.models.ir_model import MODULE_UNINSTALL_FLAG
 
@@ -433,13 +434,15 @@ class TestFieldRemoval(AuditLogRuleCommon):
         self.assert_values()
 
         # Remove the field
-        self.test_field.with_context(**{MODULE_UNINSTALL_FLAG: True}).unlink()
+        with mute_logger("odoo.api"):  # Mute 'Too many iterations for flushing fields'
+            self.test_field.with_context(**{MODULE_UNINSTALL_FLAG: True}).unlink()
         self.assert_values()
         # The field should not be linked
         self.assertFalse(self.logs.mapped("line_ids.field_id"))
 
         # Remove the model
-        self.test_model.with_context(**{MODULE_UNINSTALL_FLAG: True}).unlink()
+        with mute_logger("odoo.api"):  # Mute 'Too many iterations for flushing fields'
+            self.test_model.with_context(**{MODULE_UNINSTALL_FLAG: True}).unlink()
         self.assert_values()
 
         # The model should not be linked
