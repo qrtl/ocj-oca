@@ -81,6 +81,7 @@ msgstr "合計請求済の請求書"
 #: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_move__billing_id
 #: model_terms:ir.ui.view,arch_db:l10n_jp_summary_invoice.view_account_invoice_filter
 #: model_terms:ir.ui.view,arch_db:l10n_jp_summary_invoice.view_move_form
+#: model_terms:ir.ui.view,arch_db:l10n_jp_summary_invoice.view_partner_property_form
 msgid "Billing"
 msgstr "合計請求書"
 
@@ -110,6 +111,11 @@ msgid "Config Settings"
 msgstr "コンフィグ設定"
 
 #. module: l10n_jp_summary_invoice
+#: model:ir.model,name:l10n_jp_summary_invoice.model_res_partner
+msgid "Contact"
+msgstr ""
+
+#. module: l10n_jp_summary_invoice
 #: model:ir.model.fields,help:l10n_jp_summary_invoice.field_res_company__summary_invoice_remark
 #: model:ir.model.fields,help:l10n_jp_summary_invoice.field_res_config_settings__summary_invoice_remark
 msgid "Content here will be displayed in the summary invoice report."
@@ -131,6 +137,18 @@ msgid "Description"
 msgstr "説明"
 
 #. module: l10n_jp_summary_invoice
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_billing__display_name
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_move__display_name
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_move_line__display_name
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_tax__display_name
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_tax_group__display_name
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_res_company__display_name
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_res_config_settings__display_name
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_res_partner__display_name
+msgid "Display Name"
+msgstr ""
+
+#. module: l10n_jp_summary_invoice
 #: model_terms:ir.ui.view,arch_db:l10n_jp_summary_invoice.report_summary_invoice_document
 msgid "Draft Summary Invoice"
 msgstr "ドラフト合計請求書"
@@ -139,6 +157,26 @@ msgstr "ドラフト合計請求書"
 #: model_terms:ir.ui.view,arch_db:l10n_jp_summary_invoice.res_config_settings_view_form
 msgid "Header Remark"
 msgstr "ヘッダーコメント"
+
+#. module: l10n_jp_summary_invoice
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_billing__id
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_move__id
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_move_line__id
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_tax__id
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_tax_group__id
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_res_company__id
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_res_config_settings__id
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_res_partner__id
+msgid "ID"
+msgstr ""
+
+#. module: l10n_jp_summary_invoice
+#: model:ir.model.fields,help:l10n_jp_summary_invoice.field_res_partner__is_not_for_billing
+#: model:ir.model.fields,help:l10n_jp_summary_invoice.field_res_users__is_not_for_billing
+msgid ""
+"If enabled, invoices for this partner will be excluded from the billing "
+"process by default."
+msgstr ""
 
 #. module: l10n_jp_summary_invoice
 #: model:ir.model.fields,help:l10n_jp_summary_invoice.field_res_company__show_invoice_narration
@@ -189,6 +227,8 @@ msgstr "選択した場合、請求書は合計請求書への追加対象外と
 #. module: l10n_jp_summary_invoice
 #: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_bank_statement_line__is_not_for_billing
 #: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_move__is_not_for_billing
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_res_partner__is_not_for_billing
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_res_users__is_not_for_billing
 msgid "Is Not For Billing"
 msgstr "合計請求書対象外"
 
@@ -319,11 +359,6 @@ msgid "Tax Adjustment Entry"
 msgstr "消費税調整仕訳"
 
 #. module: l10n_jp_summary_invoice
-#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_billing__amount_tax
-msgid "Tax Amount"
-msgstr "消費税額"
-
-#. module: l10n_jp_summary_invoice
 #: model:ir.model,name:l10n_jp_summary_invoice.model_account_tax_group
 msgid "Tax Group"
 msgstr "税グループ"
@@ -374,24 +409,16 @@ msgstr "閾日タイプ"
 
 #. module: l10n_jp_summary_invoice
 #: model_terms:ir.ui.view,arch_db:l10n_jp_summary_invoice.view_account_billing_tree
-#: model_terms:ir.ui.view,arch_db:l10n_jp_summary_invoice.view_account_supplier_billing_tree
 msgid "Total"
 msgstr "合計"
 
 #. module: l10n_jp_summary_invoice
-#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_billing__amount_total
-msgid "Total Amount"
-msgstr "合計金額"
-
-#. module: l10n_jp_summary_invoice
 #: model_terms:ir.ui.view,arch_db:l10n_jp_summary_invoice.view_account_billing_tree
-#: model_terms:ir.ui.view,arch_db:l10n_jp_summary_invoice.view_account_supplier_billing_tree
 msgid "Total Tax"
 msgstr "税合計"
 
 #. module: l10n_jp_summary_invoice
 #: model_terms:ir.ui.view,arch_db:l10n_jp_summary_invoice.view_account_billing_tree
-#: model_terms:ir.ui.view,arch_db:l10n_jp_summary_invoice.view_account_supplier_billing_tree
 msgid "Total Untaxed"
 msgstr "税抜合計"
 
@@ -400,12 +427,15 @@ msgstr "税抜合計"
 msgid "Unit Price"
 msgstr "単価"
 
-#. module: l10n_jp_summary_invoice
-#: model:ir.model.fields,field_description:l10n_jp_summary_invoice.field_account_billing__amount_untaxed
-msgid "Untaxed Amount"
-msgstr "税抜金額"
+#~ msgid "Tax Amount"
+#~ msgstr "消費税額"
 
-#, python-format
+#~ msgid "Total Amount"
+#~ msgstr "合計金額"
+
+#~ msgid "Untaxed Amount"
+#~ msgstr "税抜金額"
+
 #~ msgid "All invoices must be posted before validating the billing."
 #~ msgstr "すべての請求書が記帳済でなければ合計請求書は検証できません。"
 
@@ -415,6 +445,5 @@ msgstr "税抜金額"
 #~ msgid "Partner"
 #~ msgstr "取引先"
 
-#, python-format
 #~ msgid "You cannot reset to draft an invoice that has been billed."
 #~ msgstr "合計請求書に追加した請求書はドラフトに戻せません。"
