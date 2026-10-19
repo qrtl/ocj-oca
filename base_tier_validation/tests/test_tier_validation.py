@@ -40,6 +40,74 @@ class TierTierValidation(CommonTierValidation):
         record.validate_tier()
         self.assertEqual(record.validation_status, "validated")
 
+    def test_exclude_requester_drops_requester_from_group(self):
+        """With ``exclude_requester=True`` on a group review type, the
+        requester is removed from the tier's reviewer pool so they
+        cannot auto-validate their own request -- enforcing a
+        four-eyes principle without custom Python."""
+        # Build a group containing both users and a tier definition
+        # that points at it. test_user_1 will be the requester; the
+        # group also includes test_user_1, so without the four-eyes
+        # flag they'd be in their own review's reviewer_ids.
+        group = self.env["res.groups"].create(
+            {
+                "name": "Four-eyes Reviewers",
+                "user_ids": [
+                    Command.link(self.test_user_1.id),
+                    Command.link(self.test_user_2.id),
+                ],
+            }
+        )
+        # Use the existing definition so we don't get extra reviews on
+        # tier_definition_1's individual reviewer.
+        self.tier_definition.write(
+            {
+                "review_type": "group",
+                "reviewer_id": False,
+                "reviewer_group_id": group.id,
+                "exclude_requester": True,
+            }
+        )
+        record = self.test_model.create({"test_field": 1.0})
+        record.with_user(self.test_user_1).request_validation()
+        review = record.review_ids.filtered(
+            lambda r: r.definition_id == self.tier_definition
+        )
+        # The requester (test_user_1) is excluded; only test_user_2
+        # remains as a valid reviewer.
+        self.assertIn(self.test_user_2, review.reviewer_ids)
+        self.assertNotIn(self.test_user_1, review.reviewer_ids)
+        # The requester therefore cannot self-validate.
+        self.assertFalse(record.with_user(self.test_user_1).can_review)
+        self.assertTrue(record.with_user(self.test_user_2).can_review)
+
+    def test_exclude_requester_off_keeps_legacy_behavior(self):
+        """Without the flag, a requester who happens to be a member of
+        the configured reviewer group is included in reviewer_ids and
+        can auto-validate -- which is the legacy behaviour and must
+        keep working for backwards compatibility."""
+        group = self.env["res.groups"].create(
+            {
+                "name": "Open Reviewers",
+                "user_ids": [Command.link(self.test_user_1.id)],
+            }
+        )
+        self.tier_definition.write(
+            {
+                "review_type": "group",
+                "reviewer_id": False,
+                "reviewer_group_id": group.id,
+                # exclude_requester left at its default of False
+            }
+        )
+        record = self.test_model.create({"test_field": 1.0})
+        record.with_user(self.test_user_1).request_validation()
+        review = record.review_ids.filtered(
+            lambda r: r.definition_id == self.tier_definition
+        )
+        self.assertIn(self.test_user_1, review.reviewer_ids)
+        self.assertTrue(record.with_user(self.test_user_1).can_review)
+
     def test_04_request_validation_rejected(self):
         """Request validation, rejection and reset."""
         self.assertFalse(self.test_record.review_ids)
@@ -130,13 +198,14 @@ class TierTierValidation(CommonTierValidation):
         # Create new test record
         test_record = self.test_model.create({"test_field": 2.5})
         # Create tier definitions
-        self.tier_def_obj.create(
+        tier_def = self.tier_def_obj.create(
             {
                 "model_id": self.tester_model.id,
                 "review_type": "individual",
                 "reviewer_id": self.test_user_1.id,
                 "definition_domain": "[('test_field', '>', 1.0)]",
                 "has_comment": True,
+                "comment_approve_default": "Approved",
             }
         )
         # Request validation -- auto-promotes the single review to pending.
@@ -145,7 +214,19 @@ class TierTierValidation(CommonTierValidation):
         record = test_record.with_user(self.test_user_1.id)
         res = record.validate_tier()
         ctx = res.get("context")
+        # Default comment pre-filled from tier definition
+        self.assertEqual(ctx.get("default_comment"), "Approved")
         wizard = Form(self.env["comment.wizard"].with_context(**ctx))
+        self.assertEqual(wizard.comment, "Approved")
+
+        # Clear default approve comment
+        tier_def.write({"comment_approve_default": False})
+
+        res = record.validate_tier()
+        ctx = res.get("context")
+        self.assertEqual(ctx.get("default_comment"), "")
+        wizard = Form(self.env["comment.wizard"].with_context(**ctx))
+        self.assertEqual(wizard.comment, "")
         wizard.comment = "Test Comment"
         wiz = wizard.save()
         wiz.add_comment()
@@ -365,10 +446,14 @@ class TierTierValidation(CommonTierValidation):
 
     def test_12_approve_sequence_same_user_bypassed(self):
         """Similar to test_12_approve_sequence, with all same users,
-        but approve_sequence_bypass is True"""
+        but approve_sequence_bypass is True
+        Sequence of reviewers: A, A, B, A.
+        When A validates, it should only validate the first two (A, A) and stop at B.
+        """
         # Create new test record
         test_record = self.test_model.create({"test_field": 2.5})
         # Create tier definitions
+        # sequence 40 (User 1)
         self.tier_def_obj.create(
             {
                 "model_id": self.tester_model.id,
@@ -377,9 +462,34 @@ class TierTierValidation(CommonTierValidation):
                 "definition_domain": "[('test_field', '>', 1.0)]",
                 "approve_sequence": True,
                 "approve_sequence_bypass": True,
+                "sequence": 40,
+            }
+        )
+        # sequence 30 (User 1)
+        self.tier_def_obj.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_1.id,
+                "definition_domain": "[('test_field', '>', 1.0)]",
+                "approve_sequence": True,
+                "approve_sequence_bypass": True,
+                "sequence": 30,
+            }
+        )
+        # sequence 20 (User 2)
+        self.tier_def_obj.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_2.id,
+                "definition_domain": "[('test_field', '>', 1.0)]",
+                "approve_sequence": True,
+                "approve_sequence_bypass": True,
                 "sequence": 20,
             }
         )
+        # sequence 10 (User 1)
         self.tier_def_obj.create(
             {
                 "model_id": self.tester_model.id,
@@ -399,13 +509,41 @@ class TierTierValidation(CommonTierValidation):
         record1 = test_record.with_user(self.test_user_1.id)
         self.assertTrue(record1.can_review)
         # When the first tier is validated, all the rest will be approved.
-        self.assertEqual(len(record1.review_ids), 2)
+        self.assertEqual(len(record1.review_ids), 4)
         self.assertEqual(
-            1, len(record1.review_ids.filtered(lambda x: x.status == "waiting"))
+            3, len(record1.review_ids.filtered(lambda x: x.status == "waiting"))
         )
         self.assertEqual(
             1, len(record1.review_ids.filtered(lambda x: x.status == "pending"))
         )
+        record1.validate_tier()
+        # After user 1 validates, they should have approved exactly 2 tiers: 40 and 30
+        # 20 and 10 should be pending.
+        self.assertEqual(
+            2, len(record1.review_ids.filtered(lambda x: x.status == "pending"))
+        )
+        self.assertEqual(
+            0, len(record1.review_ids.filtered(lambda x: x.status == "waiting"))
+        )
+        self.assertEqual(
+            2, len(record1.review_ids.filtered(lambda x: x.status == "approved"))
+        )
+        self.assertFalse(record1.can_review)
+        # User 2 validates.
+        record2 = test_record.with_user(self.test_user_2.id)
+        self.assertTrue(record2.can_review)
+        record2.validate_tier()
+        self.assertEqual(
+            1, len(record1.review_ids.filtered(lambda x: x.status == "pending"))
+        )
+        self.assertEqual(
+            0, len(record1.review_ids.filtered(lambda x: x.status == "waiting"))
+        )
+        self.assertEqual(
+            3, len(record1.review_ids.filtered(lambda x: x.status == "approved"))
+        )
+        # User 1 validates the final tier.
+        self.assertTrue(record1.can_review)
         record1.validate_tier()
         self.assertEqual(
             0, len(record1.review_ids.filtered(lambda x: x.status == "pending"))
@@ -414,8 +552,9 @@ class TierTierValidation(CommonTierValidation):
             0, len(record1.review_ids.filtered(lambda x: x.status == "waiting"))
         )
         self.assertEqual(
-            2, len(record1.review_ids.filtered(lambda x: x.status == "approved"))
+            4, len(record1.review_ids.filtered(lambda x: x.status == "approved"))
         )
+        self.assertEqual(record1.validation_status, "validated")
 
     def test_13_onchange_review_type(self):
         tier_def_id = self.tier_def_obj.create(
@@ -535,6 +674,305 @@ class TierTierValidation(CommonTierValidation):
         # The systray endpoint must swallow that error and return [].
         result = self.test_user_2.with_user(self.test_user_2).review_user_count()
         self.assertEqual(result, [])
+
+    def _revoke_tester_model_access(self):
+        """Make the tester model unreadable for non-admin users by
+        unlinking its public ACL and clearing the ACL cache so the next
+        check_access actually re-evaluates against the new state."""
+        self.env["ir.model.access"].search(
+            Domain("model_id", "=", self.tester_model.id)
+        ).unlink()
+        self.env["ir.model.access"].call_cache_clearing_methods()
+
+    def test_definition_onchange_warns_when_reviewer_lacks_access(self):
+        """Setting an individual reviewer with no read access on the target
+        model returns a non-blocking onchange warning."""
+        # Revoke first so the per-record check_access cache for test_user_2
+        # never gets populated with a stale "allowed" result.
+        self._revoke_tester_model_access()
+        definition = self.tier_def_obj.new(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_2.id,
+            }
+        )
+        warning = definition._onchange_warn_reviewer_access()
+        self.assertIsNotNone(warning)
+        self.assertIn(self.test_user_2.display_name, warning["warning"]["message"])
+
+    def test_definition_onchange_warns_when_group_member_lacks_access(self):
+        """Group reviewer: if any member of the assigned group lacks read
+        access on the target model, the onchange warns and names them."""
+        # Put test_user_2 in a fresh group; revoke the public ACL.
+        group = self.env["res.groups"].create(
+            {"name": "Tier Reviewers", "user_ids": [Command.link(self.test_user_2.id)]}
+        )
+        self._revoke_tester_model_access()
+        definition = self.tier_def_obj.new(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "group",
+                "reviewer_group_id": group.id,
+            }
+        )
+        warning = definition._onchange_warn_reviewer_access()
+        self.assertIsNotNone(warning)
+        self.assertIn(self.test_user_2.display_name, warning["warning"]["message"])
+
+    def test_definition_onchange_skips_field_review_type(self):
+        """The 'field' review type cannot be checked ahead of time -- the
+        reviewer only resolves at validation time -- so the onchange
+        returns no warning even if the ACL would block."""
+        self._revoke_tester_model_access()
+        definition = self.tier_def_obj.new(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "field",
+            }
+        )
+        self.assertIsNone(definition._onchange_warn_reviewer_access())
+
+    def test_definition_onchange_returns_nothing_when_no_problem(self):
+        """The onchange must stay silent when there's nothing to warn
+        about. Covers the three early-return branches:
+
+        - no model selected yet (``model_id`` empty);
+        - no reviewer set yet on a model that has one;
+        - reviewer has model access (default ACL in place).
+        """
+        # No model -> early return on `if not (model_name and ...):`.
+        definition = self.tier_def_obj.new({"review_type": "individual"})
+        self.assertIsNone(definition._onchange_warn_reviewer_access())
+        # No reviewer -> early return on `if not users:`.
+        definition = self.tier_def_obj.new(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+            }
+        )
+        self.assertIsNone(definition._onchange_warn_reviewer_access())
+        # Reviewer with access (default public ACL is in place) -> the
+        # access check finds nothing to flag and the onchange returns
+        # None at the `if not no_access:` exit.
+        definition = self.tier_def_obj.new(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_2.id,
+            }
+        )
+        self.assertIsNone(definition._onchange_warn_reviewer_access())
+
+    def test_reviewers_without_model_access_unknown_model(self):
+        """When the target model name doesn't resolve (e.g. a stale
+        reference after an uninstall), the helper returns an empty
+        res.users recordset without raising."""
+        result = self.tier_def_obj._reviewers_without_model_access(
+            "this.model.does.not.exist", self.test_user_2
+        )
+        self.assertFalse(result)
+        self.assertEqual(result._name, "res.users")
+
+    def test_16c_review_user_count_cost_flat_in_backlog(self):
+        """The systray recount must not get dearer as the backlog grows.
+
+        ``review_user_count`` used to put ``can_review`` in the *document*
+        domain, whose search method re-searches the reviewer's entire backlog
+        on that model and then evaluates the field in Python over all of it;
+        and every recompute of the stored ``tier.review.can_review`` browsed
+        its document one row at a time. Both made the endpoint cost a handful
+        of queries per pending review, paid by every reviewer on every
+        notification -- enough to occupy every HTTP worker on a batch approval.
+        """
+        self.tier_def_obj.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_1.id,
+                "definition_domain": "[('test_field', '=', 2.0)]",
+                "approve_sequence": True,
+                "notify_on_pending": False,
+                "sequence": 5,
+                "name": "Definition for test 16c - backlog",
+            }
+        )
+
+        def add_backlog(count):
+            for _i in range(count):
+                record = self.test_model.create({"test_field": 2.0})
+                record.with_user(self.test_user_2).request_validation()
+
+        def measure():
+            # A batch approval keeps moving review statuses, so the stored
+            # ``can_review`` is permanently dirty in production. Reproduce that,
+            # then drop the cache: marking the field to recompute must not go
+            # through a read of the reviews, or the cache it fills would hide
+            # exactly the queries this test is about.
+            self.env.flush_all()
+            self.env.add_to_compute(
+                self.env["tier.review"]._fields["can_review"],
+                self.test_user_1.review_ids,
+            )
+            self.env.invalidate_all(flush=False)
+            before = self.env.cr.sql_log_count
+            result = self.test_user_1.with_user(self.test_user_1).review_user_count()
+            return self.env.cr.sql_log_count - before, result
+
+        add_backlog(2)
+        small_queries, small = measure()
+        self.assertEqual(small[0]["pending_count"], 2)
+
+        add_backlog(20)
+        large_queries, large = measure()
+        self.assertEqual(large[0]["pending_count"], 22)
+
+        # Twenty more pending documents may not cost twenty more round trips.
+        # The tolerance is deliberately loose: the point is that the growth is
+        # bounded, not that the absolute query count never moves.
+        self.assertLessEqual(
+            large_queries,
+            small_queries + 3,
+            "review_user_count scales with the reviewer's backlog: "
+            f"{small_queries} queries for 2 pending documents, "
+            f"{large_queries} for 22.",
+        )
+
+    def test_16d_review_user_count_unstored_state_field(self):
+        """A state field that is not stored cannot be filtered in SQL, so
+        ``review_user_count`` drops cancelled documents in Python instead.
+        ``display_name`` (computed, never stored) stands in for such a state
+        field, with one document's name playing the cancel state."""
+        self.tier_def_obj.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_1.id,
+                "definition_domain": "[('test_field', '=', 2.0)]",
+                "name": "Definition for test 16d - unstored state",
+            }
+        )
+        kept, cancelled = self.test_model.create([{"test_field": 2.0}] * 2)
+        (kept | cancelled).with_user(self.test_user_2).request_validation()
+        with mock.patch.multiple(
+            type(self.test_model),
+            _state_field="display_name",
+            _cancel_state=cancelled.display_name,
+        ):
+            result = self.test_user_1.with_user(self.test_user_1).review_user_count()
+        counts = {r["model"]: r["pending_count"] for r in result}
+        self.assertEqual(counts[self.test_model._name], 1)
+
+    def test_16e_review_user_count_skips_orphan_reviews(self):
+        """Reviews can outlive tier validation on their model: the model may
+        have been uninstalled, or no longer inherit ``tier.validation``. The
+        systray count and the ``can_review`` prefetch must both skip them."""
+        country = self.env.ref("base.be")
+        orphan_model = "tier.validation.uninstalled"
+        # Non-sequential definition: pending orphans stay reviewable, so they
+        # reach review_user_count.
+        pending = self.env["tier.review"].create(
+            [
+                {
+                    "definition_id": self.definition_4.id,
+                    "status": "pending",
+                    "model": orphan_model,
+                    "res_id": 1,
+                },
+                {
+                    "definition_id": self.definition_4.id,
+                    "status": "pending",
+                    "model": "res.country",
+                    "res_id": country.id,
+                },
+            ]
+        )
+        self.assertTrue(all(pending.mapped("can_review")))
+        # Sequential definition: computing can_review prefetches the documents'
+        # reviews, which must not choke on a missing model, a model without
+        # tier validation, or a review without a document.
+        done = self.env["tier.review"].create(
+            [
+                {
+                    "definition_id": self.definition_5.id,
+                    "status": "approved",
+                    "model": orphan_model,
+                    "res_id": 1,
+                },
+                {
+                    "definition_id": self.definition_5.id,
+                    "status": "approved",
+                    "model": "res.country",
+                    "res_id": country.id,
+                },
+                {"definition_id": self.definition_5.id, "status": "approved"},
+            ]
+        )
+        self.assertFalse(any(done.mapped("can_review")))
+        # res.users.review_ids shares its table with tier.review.reviewer_ids
+        # but is not its inverse: drop the cached value so the count sees the
+        # reviews created above.
+        self.test_user_1.invalidate_recordset(["review_ids"])
+        self.assertTrue(pending <= self.test_user_1.review_ids)
+        result = self.test_user_1.with_user(self.test_user_1).review_user_count()
+        models = [r["model"] for r in result]
+        self.assertNotIn(orphan_model, models)
+        self.assertNotIn("res.country", models)
+
+    def test_16g_prefetch_only_open_sequential_reviews(self):
+        """Done reviews return early in ``_can_review_value``: loading their
+        document's reviews would be wasted."""
+        reviews = self.env["tier.review"].create(
+            [
+                {
+                    "definition_id": self.definition_5.id,
+                    "status": status,
+                    "model": self.test_record._name,
+                    "res_id": self.test_record.id,
+                }
+                for status in ("approved", "rejected", "pending", "waiting")
+            ]
+        )
+        TierReview = type(self.env["tier.review"])
+        with mock.patch.object(
+            TierReview,
+            "_prefetch_resource_reviews",
+            autospec=True,
+            side_effect=TierReview._prefetch_resource_reviews,
+        ) as prefetch:
+            reviews._compute_can_review()
+        prefetched = prefetch.call_args.args[0]
+        self.assertEqual(set(prefetched.mapped("status")), {"pending", "waiting"})
+
+    def test_16f_orphan_sequential_reviews_still_open(self):
+        """Open sequential reviews of a missing document model, or of a model
+        without tier validation, do not break the systray count: they cannot
+        be reviewed, and waiting ones are neither promoted nor notified."""
+        self.definition_5.notify_on_pending = True
+        country = self.env.ref("base.be")
+        reviews = self.env["tier.review"].create(
+            [
+                {
+                    "definition_id": self.definition_5.id,
+                    "status": status,
+                    "model": model,
+                    "res_id": res_id,
+                }
+                for status in ("waiting", "pending")
+                for model, res_id in (
+                    ("tier.validation.uninstalled", 1),
+                    ("res.country", country.id),
+                )
+            ]
+        )
+        self.assertFalse(any(reviews.mapped("can_review")))
+        self.test_user_1.invalidate_recordset(["review_ids"])
+        result = self.test_user_1.with_user(self.test_user_1).review_user_count()
+        models = [r["model"] for r in result]
+        self.assertNotIn("tier.validation.uninstalled", models)
+        self.assertNotIn("res.country", models)
+        waiting = reviews.filtered(lambda r: r.status == "waiting")
+        self.assertEqual(len(waiting), 2)
 
     def test_17_search_records_no_validation(self):
         """Search for records that have no validation process started"""
@@ -659,6 +1097,12 @@ class TierTierValidation(CommonTierValidation):
         # subscribed yet and must not have been notified.
         self.assertEqual(len(test_record.message_ids), 1)
         first_message = test_record.message_ids
+        # The body must name the assignee (so the recipient sees at a glance
+        # that the message is for them, since chatter does not render the
+        # "Notified to" pill for system notifications) and attribute the
+        # request to the original requester.
+        self.assertIn(review_first.todo_by, first_message.body)
+        self.assertIn(self.env.user.display_name, first_message.body)
         followers = test_record.message_follower_ids
         self.assertIn(self.test_user_1.partner_id, followers.mapped("partner_id"))
         self.assertNotIn(
@@ -687,6 +1131,81 @@ class TierTierValidation(CommonTierValidation):
             self.test_user_2.partner_id,
             new_messages.mapped("notified_partner_ids"),
             "Second-tier reviewer must be notified once promoted to pending.",
+        )
+        # Regression guard for the attribution bug: ``env.user`` at second-
+        # tier promotion time is the tier-1 approver (``test_user_1``), but
+        # the body must attribute the request to the original requester
+        # (the env user when ``request_validation`` was called). The body
+        # must also name the second-tier assignee.
+        second_body = new_messages[0].body
+        self.assertIn(review_second.todo_by, second_body)
+        self.assertIn(self.env.user.display_name, second_body)
+        self.assertNotIn(
+            self.test_user_1.display_name,
+            second_body,
+            "Second-tier message must not attribute the request to the "
+            "tier-1 approver -- that's the wrong person.",
+        )
+
+    def test_19c_no_premature_promotion_on_subset(self):
+        """Regression: ``_update_review_status`` run on a *subset* of a record's
+        reviews -- as ``review_user_count`` does per user, via
+        ``user.review_ids._update_review_status()`` -- must gate the sequence
+        over the *whole* record, not the subset. Otherwise a later-tier review
+        is promoted to ``pending`` before its predecessor is approved, which
+        both hides it from the reviewer's systray (``can_review`` is False while
+        the lower tier is still pending) and fires a ``notify_on_pending``
+        message authored by -- and so never delivered to -- that reviewer.
+        """
+        TierDefinition = self.env["tier.definition"]
+        test_record = self.test_model.create({"test_field": 2.5})
+        TierDefinition.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_1.id,
+                "definition_domain": "[('test_field', '=', 2.5)]",
+                "approve_sequence": True,
+                "notify_on_pending": True,
+                "sequence": 20,
+                "name": "First in sequence -- user 1",
+            }
+        )
+        TierDefinition.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_2.id,
+                "definition_domain": "[('test_field', '=', 2.5)]",
+                "approve_sequence": True,
+                "notify_on_pending": True,
+                "sequence": 10,
+                "name": "Second in sequence -- user 2",
+            }
+        )
+        reviews = test_record.request_validation()
+        review_second = reviews.filtered(lambda r: self.test_user_2 in r.reviewer_ids)
+        self.assertEqual(review_second.status, "waiting")
+        messages_before = test_record.message_ids
+
+        # Simulate the second-tier reviewer opening their systray: the promotion
+        # runs on *only* their own review -- the subset that excludes the
+        # first-tier predecessor.
+        review_second._update_review_status()
+        review_second.invalidate_recordset()
+
+        self.assertEqual(
+            review_second.status,
+            "waiting",
+            "A later-tier review must stay 'waiting' until its predecessor is "
+            "approved, even when _update_review_status runs on a subset that "
+            "excludes the predecessor.",
+        )
+        self.assertEqual(
+            test_record.message_ids,
+            messages_before,
+            "No notify_on_pending message must be posted from promoting a later "
+            "tier out of order.",
         )
 
     def test_19b_notify_review_available_no_op_when_no_users(self):
@@ -718,6 +1237,55 @@ class TierTierValidation(CommonTierValidation):
         self.assertEqual(test_record.message_follower_ids, followers_before)
         self.assertEqual(test_record.message_ids, messages_before)
 
+    def test_19c_to_validate_message_names_assignee(self):
+        """The ``to_validate_message`` Html field -- which the banner
+        template renders above the document -- must surface *who* the
+        record is pending on (using ``tier.review.todo_by``) rather
+        than the generic "This Record needs to be validated".
+        """
+        # Use a value that matches only the common.py definition_3 (sequence
+        # 10, reviewer test_user_2) -- and definition_2 (sequence 20,
+        # reviewer test_user_1). After ``_update_review_status`` only the
+        # lowest-sequence review is promoted to ``pending``.
+        test_record = self.test_model.create({"test_field": 3.5})
+        reviews = test_record.request_validation()
+        self.assertTrue(reviews)
+        # Manually promote (since common.py's test_user_1 is not the
+        # requester, request_validation in 19.0 leaves the reviews in
+        # ``waiting`` unless ``notify_on_create`` triggers it).
+        reviews._update_review_status()
+        pending = reviews.filtered(lambda r: r.status == "pending")
+        self.assertEqual(len(pending), 1)
+        test_record.invalidate_recordset(["to_validate_message"])
+        msg = test_record.to_validate_message or ""
+        # The banner must name the pending assignee...
+        self.assertIn(pending.todo_by, msg)
+        # ...and must not fall back to the generic record-name phrasing.
+        self.assertNotIn("needs to be validated", msg)
+
+    def test_19d_to_validate_message_falls_back_when_no_pending(self):
+        """When no review has reached ``pending`` (e.g. the defensive
+        ``waiting`` edge case), the banner must fall back to the
+        model-name phrasing so the document still has something useful.
+        """
+        # Force-create a review row directly and leave it ``waiting`` so
+        # the pending filter is empty. (``request_validation`` would
+        # auto-promote one in normal flow.)
+        test_record = self.test_model.create({"test_field": 3.5})
+        self.env["tier.review"].create(
+            {
+                "model": self.test_model._name,
+                "res_id": test_record.id,
+                "definition_id": self.definition_2.id,
+                "sequence": 1,
+                "status": "waiting",
+            }
+        )
+        test_record.invalidate_recordset(["to_validate_message"])
+        msg = test_record.to_validate_message or ""
+        self.assertIn("needs to be validated", msg)
+        self.assertIn(self.test_model._description, msg)
+
     def test_20_no_sequence(self):
         # Create new test record
         tier_review_obj = self.env["tier.review"]
@@ -731,8 +1299,12 @@ class TierTierValidation(CommonTierValidation):
         review_1.invalidate_model()
         self.assertTrue(review_1.status == "pending")
         msg2 = test_record2.message_ids[0].body
-        request = test_record2._notify_requested_review_body()
+        # The promotion body now carries the assignee + the original
+        # requester (sourced from ``review.requested_by``, not env.user).
+        request = test_record2._notify_requested_review_body(review_1)
         self.assertIn(request, msg2)
+        self.assertIn(review_1.todo_by, msg2)
+        self.assertIn(review_1.requested_by.display_name, msg2)
 
     def test_21_notify_on_create(self):
         # notify on create
@@ -1512,3 +2084,26 @@ class TierTierValidationView(CommonTierValidation):
         self.assertIn("need_validation", view["models"][model])
         self.assertIn("next_review", view["models"][model])
         self.assertIn("review_ids", view["models"][model])
+
+    def test_view_without_header_nor_sheet(self):
+        """The readonly domain added on every field of the form relies on
+        validation_status. That field is brought in by the tier validation
+        buttons, which are inserted on _tier_validation_buttons_xpath: on views
+        without such an insertion point (no header), the field has to be added
+        anyway, otherwise the client can not evaluate the domain (this is what
+        happens on base.view_partner_simple_form, opened by the mail composer).
+        """
+        view = self.env["ir.ui.view"].create(
+            {
+                "name": "tier.validation.tester2.simple.form",
+                "model": self.test_model_2._name,
+                "arch": "<form><field name='test_field'/></form>",
+            }
+        )
+        res = self.test_model_2.get_view(view_id=view.id, view_type="form")
+        arch = res["arch"]
+        if isinstance(arch, bytes):
+            arch = arch.decode()
+        self.assertIn("validation_status", res["models"][self.test_model_2._name])
+        self.assertIn('name="validation_status"', arch)
+        self.assertIn("validation_status not in", arch)

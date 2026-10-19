@@ -112,6 +112,13 @@ class TierValidation(models.AbstractModel):
         "review_ids.status",
     )
     def _compute_can_review(self):
+        # ``_get_sequences_to_approve`` filters ``review_ids`` and then reads
+        # ``reviewer_ids`` on what is left. ``filtered`` returns a recordset
+        # whose prefetch set is narrowed to the records it kept, so that read
+        # is issued one document at a time -- one query per pending review,
+        # every time the systray recounts. Read the relation once, for the
+        # whole batch, before the loop narrows anything.
+        self.review_ids.mapped("reviewer_ids")
         for rec in self:
             rec.can_review = rec._get_sequences_to_approve(self.env.user)
 
@@ -172,11 +179,32 @@ class TierValidation(models.AbstractModel):
         return self._description
 
     def _get_to_validate_message(self):
-        return f"""<i class="fa fa-info-circle"></i> {
-            self.env._(
-                "This %s needs to be validated", self._get_to_validate_message_name()
+        """Build the contextual "needs to be validated" banner body.
+
+        When at least one review has reached ``pending`` and carries a
+        ``todo_by`` label (i.e. the assignee is known -- a user, a group
+        or a field-based reviewer), surface it inline so the reader can
+        see at a glance *who* is expected to act next, not just *that*
+        action is needed.
+
+        Falls back to the model-name phrasing -- "This Sale Order needs
+        to be validated" -- when no pending review is available yet
+        (defensive: e.g. the ``waiting`` edge state, or downstream code
+        that calls this on a fresh record).
+        """
+        icon = '<i class="fa fa-lg fa-info-circle"></i>'
+        pending = self.review_ids.filtered(lambda r: r.status == "pending")[:1]
+        if pending and pending.todo_by:
+            return self.env._(
+                "%(icon)s Pending validation by %(todo_by)s",
+                icon=icon,
+                todo_by=pending.todo_by,
             )
-        }"""
+        return self.env._(
+            "%(icon)s This %(model_name)s needs to be validated",
+            icon=icon,
+            model_name=self._get_to_validate_message_name(),
+        )
 
     def _get_validated_message(self):
         msg = f"""<i class="fa fa-thumbs-up"></i> {
@@ -190,7 +218,7 @@ class TierValidation(models.AbstractModel):
         }"""
         return self.validation_status == "rejected" and msg or ""
 
-    @api.depends("validation_status")
+    @api.depends("validation_status", "review_ids.status", "review_ids.todo_by")
     def _compute_to_validate_message(self):
         for rec in self:
             rec.to_validate_message = rec._get_to_validate_message()
@@ -531,9 +559,19 @@ class TierValidation(models.AbstractModel):
                 }
             )
 
-        user_reviews = tier_reviews.filtered(
-            lambda r: r.status == "pending" and (self.env.user in r.reviewer_ids)
+        # Only approve consecutive pending reviews (by sequence) for the
+        # current user. Stop at the first review not assigned to the user,
+        # so intermediate reviewers are not skipped.
+        sorted_pending = tier_reviews.filtered(lambda r: r.status == "pending").sorted(
+            "sequence"
         )
+        user_reviews = self.env["tier.review"]
+        for review in sorted_pending:
+            if self.env.user in review.reviewer_ids:
+                user_reviews |= review
+            else:
+                break
+
         user_reviews.write(
             {
                 "status": "approved",
@@ -631,7 +669,11 @@ class TierValidation(models.AbstractModel):
             user_reviews = reviews.filtered(
                 lambda r: r.status == "pending" and (self.env.user in r.reviewer_ids)
             )
-            return self._add_comment("validate", user_reviews)
+            action = self._add_comment("validate", user_reviews)
+            action["context"]["default_comment"] = (
+                user_reviews[:1].definition_id.comment_approve_default or ""
+            )
+            return action
         self._validate_tier(reviews)
         self._update_counter({"review_deleted": True})
 
@@ -725,8 +767,34 @@ class TierValidation(models.AbstractModel):
             self.env.user.name,
         )
 
-    def _notify_requested_review_body(self):
-        return self.env._("A review has been requested by %s.", self.env.user.name)
+    def _notify_requested_review_body(self, tier_reviews=None):
+        """Chatter body for a tier reaching ``pending``.
+
+        Sources the requester from the review's ``requested_by`` rather
+        than ``env.user`` -- on second-and-later tier promotions
+        ``env.user`` is the previous-tier *approver*, which is the wrong
+        person to attribute the request to.
+
+        Names the assignee(s) in the body so the recipient sees at a
+        glance that the message is meant for them (chatter notifications
+        do not render the "Notified to" pill, so the body has to carry
+        that information itself). Reuses ``tier.review.todo_by`` so the
+        wording is consistent with the Reviews table and handles every
+        review type out of the box -- individual user, group, or field.
+        """
+        if tier_reviews:
+            requester = tier_reviews[:1].requested_by or self.env.user
+            assignees = ", ".join(
+                filter(None, tier_reviews.mapped("todo_by"))
+            ) or self.env._("the assigned reviewer")
+            return self.env._(
+                "Review pending for %(assignees)s, requested by %(requester)s.",
+                assignees=assignees,
+                requester=requester.display_name,
+            )
+        return self.env._(
+            "A review has been requested by %s.", self.env.user.display_name
+        )
 
     def _notify_review_requested(self, tier_reviews):
         """method to notify when tier validation is created"""
@@ -853,7 +921,18 @@ class TierValidation(models.AbstractModel):
     def _update_counter(self, review_counter):
         self.review_ids._update_review_status()
         channel = "base.tier.validation/updated"
-        self.env.user.partner_id._bus_send(channel, review_counter)
+        # Notify the reviewers whose pending count actually changes, not the
+        # acting user. Sending the delta to ``self.env.user`` made unrelated
+        # users' systray counters drift (even negative) whenever someone acted
+        # on a tier-validated record without being one of its reviewers. When
+        # the reviews are already gone (deletions), fall back to the acting
+        # user. The client recomputes the absolute count on receipt, so the
+        # exact audience only affects how promptly a reviewer sees the update.
+        partners = self.review_ids.mapped("reviewer_ids.partner_id")
+        if not partners:
+            partners = self.env.user.partner_id
+        for partner in partners:
+            partner._bus_send(channel, review_counter)
 
     def unlink(self):
         self.mapped("review_ids").unlink()
@@ -916,6 +995,24 @@ class TierValidation(models.AbstractModel):
                 _merge_view_fields(all_models, new_models)
             excepted_fields = self._get_all_validation_exceptions()
             all_fields = self.fields_get(attributes=("readonly",))
+            # The readonly modifier added below relies on validation_status.
+            # That field node is brought in by the tier validation buttons
+            # snippet, inserted on _tier_validation_buttons_xpath (the label
+            # only refers to the field in its invisible modifiers): on views
+            # without such an insertion point (eg. the small partner form
+            # views), the field is missing from the view while the modifier is
+            # still added, and the client can not evaluate it.
+            if not doc.xpath(
+                "//field[@name='validation_status'][not(ancestor::field)]"
+            ):
+                new_node = etree.fromstring(
+                    '<div><field name="validation_status" invisible="1"/></div>'
+                )
+                new_arch, new_models = View.postprocess_and_fields(new_node, self._name)
+                new_node = etree.fromstring(new_arch)
+                for new_element in new_node:
+                    doc.append(new_element)
+                _merge_view_fields(all_models, new_models)
             for node in doc.xpath("//field[@name][not(ancestor::field)]"):
                 field_name = node.attrib.get("name")
                 if field_name in excepted_fields:
@@ -959,7 +1056,7 @@ class TierValidation(models.AbstractModel):
                 )
                 rec.message_post(
                     subtype_xmlid=self._get_requested_notification_subtype(),
-                    body=rec._notify_requested_review_body(),
+                    body=rec._notify_requested_review_body(tier_reviews),
                 )
 
 

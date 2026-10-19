@@ -1,3 +1,34 @@
+## 19.0.1.0.4 (2026-05-13)
+
+UI improvement:
+
+- The "needs to be validated" banner shown above tier-validated
+  documents now surfaces *who* is expected to act, when known.
+  Reads "Pending validation by John" or "Pending validation by
+  Group Accountants" instead of the generic
+  "This Record needs to be validated", with a fallback to the
+  model-name phrasing for the defensive edge case where no review
+  has reached ``pending`` yet. Reuses ``tier.review.todo_by`` so
+  every review type (individual user, group, ``res.users`` /
+  ``res.groups`` field) is handled uniformly. The banner template
+  now reads from the long-standing ``to_validate_message`` Html
+  field, which was previously defined on the model but never
+  rendered.
+
+## 19.0.1.0.3 (2026-05-13)
+
+Improvements:
+
+- ``notify_on_pending`` chatter body now names the assignee(s) so the
+  recipient can tell at a glance that the message is for them. Reuses
+  ``tier.review.todo_by`` so every review type (individual user,
+  group, ``res.users`` / ``res.groups`` field) is handled uniformly.
+- ``notify_on_pending`` chatter body now attributes the request to
+  ``review.requested_by`` (the user who actually pressed *Request
+  Validation*) instead of ``env.user``. On second-and-later tier
+  promotions ``env.user`` is the previous-tier approver, which was the
+  wrong person to credit.
+
 ## 19.0.1.0.1 (2026-05-12)
 
 Fixes:

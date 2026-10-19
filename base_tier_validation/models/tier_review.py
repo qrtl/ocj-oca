@@ -2,6 +2,7 @@
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl).
 
 import logging
+from collections import defaultdict
 
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
@@ -93,8 +94,50 @@ class TierReview(models.Model):
 
     @api.depends("status", "approve_sequence", "sequence", "model", "res_id")
     def _compute_can_review(self):
+        # Only open reviews of sequential definitions reach the branch of
+        # ``_can_review_value`` that looks at the document, so only those are
+        # worth warming.
+        self.filtered(
+            lambda r: r.approve_sequence and r.status in ("waiting", "pending")
+        )._prefetch_resource_reviews()
         for record in self:
             record.can_review = record._can_review_value()
+
+    def _has_resource_model(self, model=None):
+        """Whether the review's document model (or ``model``) still has tier
+        validation. It may have been uninstalled, or have dropped tier
+        validation, while reviews pointing at it survive."""
+        model = model or self.model
+        return (
+            bool(model)
+            and model in self.env
+            and "review_ids" in self.env[model]._fields
+        )
+
+    def _prefetch_resource_reviews(self):
+        """Warm the cache with the reviews of every resource in ``self``.
+
+        ``_can_review_value`` browses its own ``res_id`` to find the lowest
+        pending sequence on that document. Record by record, that browse has a
+        prefetch set of exactly one id, so every review pays a fresh read of
+        its document's ``review_ids`` -- a handful of queries per review, on
+        every recompute of this (stored) field. The systray recount flushes
+        ``can_review``, so the cost of the counter grew with the reviewer's
+        backlog.
+
+        Reading the same relation once per model puts the values in the
+        environment cache, where the per-record browse then finds them for
+        free. Callers pass the subset whose documents they are about to look
+        at.
+        """
+        res_ids_per_model = defaultdict(list)
+        for record in self:
+            if record.model and record.res_id:
+                res_ids_per_model[record.model].append(record.res_id)
+        for model, res_ids in res_ids_per_model.items():
+            if not self._has_resource_model(model):
+                continue
+            self.env[model].browse(res_ids).review_ids.fetch(["status", "sequence"])
 
     def _update_review_status(self):
         """Promote reviews that are currently available to pending."""
@@ -106,11 +149,39 @@ class TierReview(models.Model):
         reviews = self.filtered(lambda rev: rev.status in ["waiting", "pending"])
         if not reviews:
             return
-        next_seq = min(reviews.mapped("sequence"))
+        # Lowest still-open sequence *per record*, computed over the whole
+        # record's reviews -- NOT just this recordset. Computing it over
+        # ``self`` promotes a later tier prematurely whenever the method runs on
+        # a subset that excludes the lower-sequence predecessors, e.g.
+        # ``review_user_count`` calling ``user.review_ids._update_review_status()``
+        # for a second-tier reviewer (their own review is then the only -- and
+        # thus "minimum" -- sequence in the set, so it wrongly goes ``pending``).
+        # One grouped query for all records, rather than reading each
+        # document's reviews in turn: the systray calls this on the reviewer's
+        # whole backlog. Reading tier.review directly also copes with reviews
+        # whose model was uninstalled or no longer has tier validation.
+        groups = self.env["tier.review"]._read_group(
+            [
+                ("model", "in", list(set(reviews.mapped("model")))),
+                ("res_id", "in", list(set(reviews.mapped("res_id")))),
+                ("status", "in", ("waiting", "pending")),
+            ],
+            groupby=["model", "res_id"],
+            aggregates=["sequence:min"],
+        )
+        min_seq_by_record = {
+            (model, res_id): sequence for model, res_id, sequence in groups
+        }
         for record in reviews:
             if record.status != "waiting":
                 continue
-            if record.approve_sequence and record.sequence != next_seq:
+            # Nobody can act on a review whose document is gone, and notifying
+            # its reviewers would fail on the missing model.
+            if not (record.res_id and record._has_resource_model()):
+                continue
+            if record.approve_sequence and record.sequence != min_seq_by_record.get(
+                (record.model, record.res_id)
+            ):
                 continue
             record.status = "pending"
             if record.definition_id.notify_on_pending:
@@ -122,6 +193,9 @@ class TierReview(models.Model):
             return False
         if not self.approve_sequence:
             return True
+        # An orphaned review can neither be opened nor approved.
+        if not (self.res_id and self._has_resource_model()):
+            return False
         resource = self.env[self.model].browse(self.res_id)
         reviews = resource.review_ids.filtered(lambda r: r.status == "pending")
         if not reviews:
@@ -131,7 +205,13 @@ class TierReview(models.Model):
 
     @api.model
     def _get_reviewer_fields(self):
-        return ["reviewer_id", "reviewer_group_id", "reviewer_group_id.user_ids"]
+        return [
+            "reviewer_id",
+            "reviewer_group_id",
+            "reviewer_group_id.user_ids",
+            "definition_id.exclude_requester",
+            "requested_by",
+        ]
 
     @api.depends(lambda self: self._get_reviewer_fields())
     def _compute_reviewer_ids(self):
@@ -154,16 +234,17 @@ class TierReview(models.Model):
             rec.todo_by = todo_by
 
     def _get_reviewers(self):
+        reviewers = self.env["res.users"]
         if self.reviewer_id or self.reviewer_group_id.user_ids:
-            return self.reviewer_id + self.reviewer_group_id.user_ids
-        if self.reviewer_field_id:
+            reviewers = self.reviewer_id + self.reviewer_group_id.user_ids
+        elif self.reviewer_field_id:
             resource = self.env[self.model].browse(self.res_id)
             reviewer_field = getattr(resource, self.reviewer_field_id.name, False)
             if reviewer_field:
                 if reviewer_field._name == "res.groups":
-                    return reviewer_field.user_ids
+                    reviewers = reviewer_field.user_ids
                 elif reviewer_field._name == "res.users":
-                    return reviewer_field
+                    reviewers = reviewer_field
                 else:
                     raise ValidationError(
                         self.env._(
@@ -171,7 +252,12 @@ class TierReview(models.Model):
                             "should be of the appropriate type"
                         )
                     )
-        return self.env["res.users"]
+        # Four-eyes: drop the requester from the reviewer pool if the
+        # definition opted in. Done as a post-filter so it applies
+        # uniformly across individual / group / field review types.
+        if self.definition_id.exclude_requester and self.requested_by:
+            reviewers -= self.requested_by
+        return reviewers
 
     def _notify_pending_status(self, review_ids):
         """Method to call and reuse abstract notification method"""
@@ -189,16 +275,24 @@ class TierReview(models.Model):
         return self.env._("A review has been requested %s days ago.", delay)
 
     def _send_review_reminder(self):
-        record = self.env[self.model].browse(self.res_id)
-        # Only schedule activity if reviewer is a single user and model has activities
-        if len(self.reviewer_ids) == 1 and hasattr(record, "activity_ids"):
-            self._schedule_review_reminder_activity(record)
-        elif hasattr(record, "message_post"):
-            self._notify_review_reminder(record)
-        else:
-            msg = f"Could not send reminder for record {record}"
-            _logger.exception(msg)
-        self.last_reminder_date = fields.Datetime.now()
+        for rev in self:
+            record = self.env[rev.model].browse(rev.res_id)
+            if not record.exists():  # <-- skip orphaned reviews
+                continue
+            # Only schedule activity if reviewer is a single user and model
+            # has activities. Excluded from coverage: exercising it needs a
+            # validated model mixing in ``mail.activity.mixin``, which none of
+            # the base test models do (they are ``mail.thread`` at most).
+            if (  # pragma: no cover
+                len(rev.reviewer_ids) == 1 and hasattr(record, "activity_ids")
+            ):
+                rev._schedule_review_reminder_activity(record)
+            elif hasattr(record, "message_post"):
+                rev._notify_review_reminder(record)
+            else:
+                msg = f"Could not send reminder for record {record}"
+                _logger.exception(msg)
+            rev.last_reminder_date = fields.Datetime.now()
 
     def _notify_review_reminder(self, record):
         record.message_post(
