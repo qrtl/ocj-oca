@@ -139,11 +139,6 @@ msgid "Payment Amt"
 msgstr "入金額"
 
 #. module: l10n_jp_summary_invoice_carryover
-#: model:ir.model.fields,help:l10n_jp_summary_invoice_carryover.field_account_billing__payment_amount
-msgid "Payments received on previous billing invoices."
-msgstr "前回請求書に対する入金額。"
-
-#. module: l10n_jp_summary_invoice_carryover
 #: model:ir.model.fields,field_description:l10n_jp_summary_invoice_carryover.field_account_billing__prev_billed_amount
 #: model_terms:ir.ui.view,arch_db:l10n_jp_summary_invoice_carryover.view_account_billing_form_carryover
 msgid "Previous Billed Amount"
