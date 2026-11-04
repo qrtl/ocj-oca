@@ -175,6 +175,12 @@ msgstr "合計請求書"
 #. module: account_billing
 #. odoo-python
 #: code:addons/account_billing/models/account_billing.py:0
+msgid "Billing %(name)s is cancelled"
+msgstr "合計請求書 %(name)s は取消されました"
+
+#. module: account_billing
+#. odoo-python
+#: code:addons/account_billing/models/account_billing.py:0
 msgid "Billing %s is cancelled"
 msgstr "合計請求書 %s は取消されました"
 
@@ -221,13 +227,20 @@ msgstr "合計請求書がドラフトにリセットされます"
 #: model:ir.model.fields,help:account_billing.field_account_bank_statement_line__billing_line_ids
 #: model:ir.model.fields,help:account_billing.field_account_move__billing_line_ids
 msgid "Billing lines that reference this invoice"
-msgstr ""
+msgstr "この請求書を参照している合計請求書明細"
 
 #. module: account_billing
 #: model:ir.model.fields,field_description:account_billing.field_account_bank_statement_line__billing_ids
 #: model:ir.model.fields,field_description:account_billing.field_account_move__billing_ids
 msgid "Billings"
 msgstr "合計請求書"
+
+#. module: account_billing
+#. odoo-python
+#: code:addons/account_billing/models/account_billing.py:0
+#: model_terms:ir.ui.view,arch_db:account_billing.view_account_billing_form
+msgid "Bills"
+msgstr "仕入先請求書"
 
 #. module: account_billing
 #: model_terms:ir.ui.view,arch_db:account_billing.view_account_billing_form
@@ -513,6 +526,12 @@ msgstr "支払状態"
 #. module: account_billing
 #. odoo-python
 #: code:addons/account_billing/models/account_move.py:0
+msgid "Please select invoices with same company"
+msgstr "同じ会社の請求書を選択してください"
+
+#. module: account_billing
+#. odoo-python
+#: code:addons/account_billing/models/account_move.py:0
 msgid "Please select invoices with same currency"
 msgstr "同じ通貨の請求書を選択してください"
 
@@ -540,6 +559,11 @@ msgid "Search Billings"
 msgstr "合計請求書検索"
 
 #. module: account_billing
+#: model:ir.model.fields,field_description:account_billing.field_account_billing_line__sequence
+msgid "Sequence"
+msgstr "シーケンス"
+
+#. module: account_billing
 #: model_terms:ir.ui.view,arch_db:account_billing.view_account_billing_form
 msgid "Set to Draft"
 msgstr "ドラフトに設定"
@@ -552,6 +576,16 @@ msgid "Status"
 msgstr "状態"
 
 #. module: account_billing
+#: model:ir.model.fields,field_description:account_billing.field_account_billing__amount_tax
+msgid "Tax Amount"
+msgstr "税額"
+
+#. module: account_billing
+#: model_terms:ir.ui.view,arch_db:account_billing.view_account_billing_tree
+msgid "Tax Excluded"
+msgstr "税抜"
+
+#. module: account_billing
 #: model:ir.model.fields,help:account_billing.field_account_billing_line__origin
 msgid "The document(s) that generated the invoice."
 msgstr "顧客請求書を生成したドキュメント"
@@ -561,6 +595,12 @@ msgstr "顧客請求書を生成したドキュメント"
 #: model_terms:ir.ui.view,arch_db:account_billing.view_account_billing_form
 msgid "Threshold Date"
 msgstr "閾日"
+
+#. module: account_billing
+#. odoo-python
+#: code:addons/account_billing/models/account_billing.py:0
+msgid "Threshold Date cannot be later than the %(date_type)s in lines"
+msgstr "閾日は、明細行の %(date_type)s より後にすることはできません"
 
 #. module: account_billing
 #: model:ir.model.fields,field_description:account_billing.field_account_billing__threshold_date_type
@@ -592,6 +632,11 @@ msgstr "残額合計"
 #: model:ir.model.fields,help:account_billing.field_account_billing__bill_type
 msgid "Type of invoice"
 msgstr "請求書タイプ"
+
+#. module: account_billing
+#: model:ir.model.fields,field_description:account_billing.field_account_billing__amount_untaxed
+msgid "Untaxed Amount"
+msgstr "税抜金額"
 
 #. module: account_billing
 #: model_terms:ir.ui.view,arch_db:account_billing.view_account_billing_form

@@ -381,25 +381,54 @@ class TestReportPositionedImage(BaseCommon):
         self.assertIn("first-page", str(result))
         self.assertIn("<!DOCTYPE html>", str(result))
 
-    def test_inject_conditional_images_falls_back_to_bodies(self):
-        """Without one header per record, the image goes into the bodies instead."""
-        report, matching, _other = self._setup_condition()
-        self.image_a.first_page_only = True
-        # One body has no identifiable record, and a third has no res_id at all.
-        bodies = [Markup(f"<html><body>{name}</body></html>") for name in "abc"]
-        res_ids = [None, matching.id]
-        matched_ids = report._get_condition_matches(res_ids, self.image_a)
-        self.assertIsNone(
-            report._inject_conditional_images_into_header(
-                self._make_header(1), res_ids, self.image_a, matched_ids
+    def test_condition_matches_archived_records(self):
+        """An archived record still gets its image when it is printed."""
+        _report, matching, _other = self._setup_condition()
+        matching.active = False
+        self.assertEqual(
+            self.image_a._get_condition_matched_ids(
+                self.env["res.partner"], matching.ids
+            ),
+            set(matching.ids),
+        )
+
+    def _make_report_html(self, partners, with_header=True):
+        """Mimic a rendered qweb-pdf report: one article per record."""
+        parts = []
+        for partner in partners:
+            if with_header:
+                parts.append(f'<div class="header">HEADER-{partner.id}</div>')
+            parts.append(
+                '<div class="article" data-oe-model="res.partner" '
+                f'data-oe-id="{partner.id}">BODY-{partner.id}</div>'
             )
+        return f"<html><body><main>{''.join(parts)}</main></body></html>".encode()
+
+    def test_prepare_html_places_conditional_and_plain_images(self):
+        """Plain images go to the whole header, conditional ones per record."""
+        report, matching, other = self._setup_condition()
+        report.report_positioned_image_ids = [Command.link(self.global_image.id)]
+        bodies, res_ids, header, _footer, _args = report._prepare_html(
+            self._make_report_html(matching | other), report_model="res.partner"
         )
-        new_bodies = report._inject_conditional_images_into_bodies(
-            bodies, res_ids, self.image_a, matched_ids
+        self.assertEqual(res_ids, [matching.id, other.id])
+        root = lxml.html.fromstring(header)
+        headers = root.xpath("//*[@id='minimal_layout_report_headers']")[0]
+        self.assertEqual(len(headers), 2)
+        # Each header child holds its own record's image only.
+        self.assertEqual(len(headers[0].xpath(".//img")), 1)
+        self.assertFalse(headers[1].xpath(".//img"))
+        # The plain image is placed once, outside the per-record headers.
+        self.assertEqual(len(root.xpath("//img")), 2)
+        self.assertFalse(any("<img" in str(body) for body in bodies))
+
+    def test_prepare_html_skips_conditional_images_without_header(self):
+        """A layout without a per-record header gets no conditional image."""
+        report, matching, other = self._setup_condition()
+        bodies, res_ids, header, _footer, _args = report._prepare_html(
+            self._make_report_html(matching | other, with_header=False),
+            report_model="res.partner",
         )
-        self.assertEqual(len(new_bodies), len(bodies))
-        self.assertNotIn("<img", str(new_bodies[0]))
-        self.assertIn('<img src="data:image/', str(new_bodies[1]))
-        self.assertNotIn("<img", str(new_bodies[2]))
-        # 'first_page_only' is inert in a body: subst() never runs there.
-        self.assertNotIn("first-page", str(new_bodies[1]))
+        self.assertEqual(res_ids, [matching.id, other.id])
+        self.assertNotIn("<img", str(header))
+        self.assertFalse(any("<img" in str(body) for body in bodies))

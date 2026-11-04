@@ -53,7 +53,7 @@ class ReportPositionedImage(models.Model):
         "domain is evaluated against whichever model the printed report "
         "renders, so one image can guard several reports as long as they share "
         "the field paths it uses. "
-        "Example: [('partner_id.seal_on_invoice', '=', True)]",
+        "Example: [('partner_id.country_id.code', '=', 'JP')]",
     )
 
     def _default_company_id(self):
@@ -112,22 +112,25 @@ class ReportPositionedImage(models.Model):
         A condition that does not fit ``model`` matches nothing rather than
         everything: an image is printed only where it was meant to be. Run as
         sudo so that the output does not depend on the record rules of the user
-        requesting the report.
+        requesting the report, and on archived records too since they can be
+        printed as well.
         """
         self.ensure_one()
+        model = model.sudo().with_context(active_test=False)
         try:
             domain = Domain(literal_eval(self.domain))
             domain.validate(model)
         except Exception:
             _logger.warning(
-                "Skipping positioned image %s: its condition %r cannot be "
-                "evaluated on %s.",
+                "Skipping positioned image %s: its condition %r could not be "
+                "checked on %s.",
                 self.display_name,
                 self.domain,
                 model._name,
+                exc_info=True,
             )
             return set()
-        return set(model.sudo().search(Domain("id", "in", res_ids) & domain).ids)
+        return set(model.search(Domain("id", "in", res_ids) & domain).ids)
 
     def _get_aspect_ratio(self):
         """Get image aspect ratio (width/height)."""

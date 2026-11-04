@@ -50,20 +50,20 @@ class IrActionsReport(models.Model):
             )
         return Markup("".join(parts))
 
-    def _insert_html_into_document(self, document, html_to_inject):
-        if Markup("</body>") in document:
-            return document.replace(
+    def _insert_html_into_header(self, header, html_to_inject):
+        if Markup("</body>") in header:
+            return header.replace(
                 Markup("</body>"), html_to_inject + Markup("</body>"), 1
             )
-        if Markup("<body>") in document:
-            return document.replace(
+        if Markup("<body>") in header:
+            return header.replace(
                 Markup("<body>"), Markup("<body>") + html_to_inject, 1
             )
-        return document + html_to_inject
+        return header + html_to_inject
 
     def _inject_images_into_header(self, header, image_configs):
         image_html = self._build_image_html(image_configs)
-        return self._insert_html_into_document(header, image_html)
+        return self._insert_html_into_header(header, image_html)
 
     def _get_condition_matches(self, res_ids, images):
         """Return {image id: set of matching res_ids} for the printed records."""
@@ -76,11 +76,11 @@ class IrActionsReport(models.Model):
             for image in images
         }
 
-    def _get_conditional_image_configs(self, res_id, images, matched_ids, **kwargs):
+    def _get_conditional_image_configs(self, res_id, images, matched_ids):
         if not res_id:
             return []
         return [
-            self._image_to_config(image, **kwargs)
+            self._image_to_config(image)
             for image in images
             if res_id in matched_ids.get(image.id, ())
         ]
@@ -98,18 +98,18 @@ class IrActionsReport(models.Model):
         other, and the 'first-page' class keeps working since ``subst()`` does
         run in the header document.
 
-        Return None when the layout does not provide one header per rendered
-        record, so that the caller can fall back to the bodies.
+        Layouts without one header per rendered record (e.g. 'web.basic_layout')
+        are left untouched: there is no per-record place to put the image.
         """
         root = lxml.html.fromstring(
             header, parser=lxml.html.HTMLParser(encoding="utf-8")
         )
         containers = root.xpath("//*[@id='minimal_layout_report_headers']")
         if not containers:
-            return None
+            return header
         headers = containers[0].getchildren()
         if len(headers) != len(res_ids):
-            return None
+            return header
         injected = False
         for record_header, res_id in zip(headers, res_ids, strict=True):
             image_configs = self._get_conditional_image_configs(
@@ -133,33 +133,6 @@ class IrActionsReport(models.Model):
             )
         )
 
-    def _inject_conditional_images_into_bodies(
-        self, bodies, res_ids, images, matched_ids
-    ):
-        """Inject each image into the bodies of the records matching its condition.
-
-        Fallback for the layouts that carry no per-record header. wkhtmltopdf
-        renders a fixed-position element of a body once, so the image only shows
-        on the record's first page; 'first_page_only' is meaningless here as
-        ``subst()`` never runs in a body.
-        """
-        new_bodies = []
-        # ``res_ids`` holds a None for every body whose record could not be
-        # identified, and is shorter than ``bodies`` when the layout carries no
-        # 'article' node at all; zip() skips the former and the extension below
-        # leaves the latter untouched.
-        for body, res_id in zip(bodies, res_ids, strict=False):
-            image_configs = self._get_conditional_image_configs(
-                res_id, images, matched_ids, first_page_only=False
-            )
-            if image_configs:
-                body = self._insert_html_into_document(
-                    body, self._build_image_html(image_configs)
-                )
-            new_bodies.append(body)
-        new_bodies.extend(bodies[len(new_bodies) :])
-        return new_bodies
-
     @api.constrains("report_positioned_image_ids", "model")
     def _check_positioned_image_domains(self):
         """A report may only take images whose condition fits the model it renders."""
@@ -171,16 +144,14 @@ class IrActionsReport(models.Model):
                 image._validate_domain(model)
 
     @staticmethod
-    def _image_to_config(image, first_page_only=None):
+    def _image_to_config(image):
         return {
             "image": image.image,
             "pos_top": image.pos_top,
             "pos_left": image.pos_left,
             "width": image.width,
             "height": image.height,
-            "first_page_only": (
-                image.first_page_only if first_page_only is None else first_page_only
-            ),
+            "first_page_only": image.first_page_only,
         }
 
     def _get_positioned_images(self):
@@ -222,15 +193,9 @@ class IrActionsReport(models.Model):
         conditional_images = self._get_conditional_positioned_images()
         if conditional_images:
             matched_ids = self._get_condition_matches(res_ids, conditional_images)
-            new_header = self._inject_conditional_images_into_header(
+            header = self._inject_conditional_images_into_header(
                 header, res_ids, conditional_images, matched_ids
             )
-            if new_header is None:
-                bodies = self._inject_conditional_images_into_bodies(
-                    bodies, res_ids, conditional_images, matched_ids
-                )
-            else:
-                header = new_header
         return bodies, res_ids, header, footer, specific_paperformat_args
 
     def _get_report_company(self, res_ids):
