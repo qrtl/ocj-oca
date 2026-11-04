@@ -61,6 +61,20 @@ class IrActionsReport(models.Model):
             )
         return header + html_to_inject
 
+    def _render_empty_header(self):
+        """Render the header document core skips for reports without a header."""
+        layout = self._get_layout()
+        return self.env["ir.qweb"]._render(
+            layout.id,
+            {
+                "subst": True,
+                "body": Markup('<div id="minimal_layout_report_headers"></div>'),
+                "base_url": self._get_report_url(layout=layout),
+                "report_xml_id": self.xml_id,
+                "debug": self.env.context.get("debug"),
+            },
+        )
+
     def _inject_images_into_header(self, header, image_configs):
         image_html = self._build_image_html(image_configs)
         return self._insert_html_into_header(header, image_html)
@@ -189,7 +203,11 @@ class IrActionsReport(models.Model):
         bodies, res_ids, header, footer, specific_paperformat_args = result
         image_configs = self._get_positioned_image_configs()
         if image_configs:
+            if header is None:
+                header = self._render_empty_header()
             header = self._inject_images_into_header(header, image_configs)
+        if header is None:
+            return bodies, res_ids, header, footer, specific_paperformat_args
         conditional_images = self._get_conditional_positioned_images()
         if conditional_images:
             matched_ids = self._get_condition_matches(res_ids, conditional_images)
