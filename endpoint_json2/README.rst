@@ -185,8 +185,6 @@ Contributors
 -  Quartile <https://www.quartile.co>
 
    -  Yoshi Tashiro
-   -  Aung Ko Ko Lin
-   -  Shinnosuke Morita
 
 Maintainers
 -----------

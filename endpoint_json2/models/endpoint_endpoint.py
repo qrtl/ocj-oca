@@ -8,7 +8,6 @@ import werkzeug
 
 from odoo import Command, api, fields, models
 from odoo.exceptions import AccessError, ValidationError
-from odoo.fields import Domain
 from odoo.service.model import get_public_method
 from odoo.tools.json import json_default
 from odoo.tools.safe_eval import json as safe_json
@@ -183,27 +182,19 @@ class EndpointEndpoint(models.Model):
             if not rec.json2_default_domain:
                 continue
             try:
-                # Domain() validates the structure (leaves, operators), not
-                # just that the JSON happens to be a list.
-                Domain(json.loads(rec.json2_default_domain))
-            except (json.JSONDecodeError, TypeError, ValueError) as err:
+                domain = json.loads(rec.json2_default_domain)
+                if not isinstance(domain, list):
+                    raise ValueError
+            except (json.JSONDecodeError, ValueError):
                 raise ValidationError(
-                    self.env._(
-                        "Default domain must be a valid JSON domain: %(error)s",
-                        error=err,
-                    )
+                    self.env._("Default domain must be a valid JSON list.")
                 ) from None
 
-    def _json2_is_valid_response_field(self, field_spec, model=None):
-        # Resolved through the field metadata rather than through values: on an
-        # empty recordset a scalar field reads back as False, so walking with
-        # model[name] would raise on a spec that dots through one.
-        if model is None:
-            model = self.env[self.json2_model_name]
+    def _json2_is_valid_response_field(self, Model, field_spec):
         if "." not in field_spec:
-            return field_spec in model._fields
+            return field_spec in Model._fields
         base, sub = field_spec.split(".", 1)
-        fd = model._fields.get(base)
+        fd = Model._fields.get(base)
         return (
             fd
             and fd.type in ("many2one", "many2many", "one2many")
@@ -217,7 +208,7 @@ class EndpointEndpoint(models.Model):
                 continue
             if rec.json2_model_name not in self.env:
                 continue
-            model = self.env[rec.json2_model_name]
+            Model = self.env[rec.json2_model_name]
             field_names, _aliases = rec._json2_parse_response_fields()
             # Plain names are checked only for these two methods. This is a
             # policy choice, not a taxonomy of the ORM: read_group returns model
@@ -228,13 +219,13 @@ class EndpointEndpoint(models.Model):
             # field of the model".
             # Dotted specs stay checkable whatever the method is, because
             # _json2_resolve_dotted_fields resolves their base against
-            # the model's fields before injecting the related values.
+            # Model._fields before injecting the related values.
             reads_fields = rec.json2_method in ("read", "search_read")
             invalid = [
                 f
                 for f in field_names
                 if ("." in f or reads_fields)
-                and not rec._json2_is_valid_response_field(f, model=model)
+                and not rec._json2_is_valid_response_field(Model, f)
             ]
             if invalid:
                 raise ValidationError(
@@ -450,12 +441,9 @@ class EndpointEndpoint(models.Model):
             Model = Model.with_context(lang=self.json2_lang_id.code)
         if self.json2_tz:
             Model = Model.with_context(tz=self.json2_tz)
-        default_domain = Domain(json.loads(self.json2_default_domain or "[]"))
-        if not default_domain.is_true():
-            # Combine explicitly rather than concatenating the two lists, which
-            # would rely on the implicit AND of normalize_domain. Handed over as
-            # a plain list so that params stay JSON-shaped for code snippets.
-            params["domain"] = list(default_domain & Domain(params.get("domain") or []))
+        default_domain = json.loads(self.json2_default_domain or "[]")
+        if default_domain:
+            params["domain"] = default_domain + (params.get("domain") or [])
         response_fields, aliases = self._json2_parse_response_fields()
         dotted_map = self._json2_parse_dotted_fields(response_fields)
         if dotted_map and params.get("fields"):
