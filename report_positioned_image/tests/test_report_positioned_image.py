@@ -443,7 +443,8 @@ class TestReportPositionedImage(BaseCommon):
         )
         root = lxml.html.fromstring(header)
         self.assertEqual(len(root.xpath("//img")), 1)
-        self.assertFalse(
-            root.xpath("//*[@id='minimal_layout_report_headers']")[0].getchildren()
-        )
+        headers = root.xpath("//*[@id='minimal_layout_report_headers']")[0]
+        self.assertEqual(len(headers), len(bodies))
+        self.assertTrue(all(node.text_content() for node in headers))
+        self.assertFalse(headers.xpath(".//img"))
         self.assertFalse(any("<img" in str(body) for body in bodies))
