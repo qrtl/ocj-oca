@@ -202,6 +202,59 @@ class TestDataImportJob(DataImportCase):
         # The unit stays settled once, so the file waits for the other unit.
         self.assertEqual(log.unit_settled, 1)
         self.assertEqual(log.state, "processing")
+        self.assertEqual(log.unit_failed, 0)
+        self.assertFalse(log.error_ids)
+
+    def test_requeued_job_corrects_a_closed_log(self):
+        log = self._create_log(content=b"key,qty\nD-1,2\nD-2,3\n")
+        log._start_processing(2)
+        with patch(f"{MODEL}._import_unit", return_value=[]):
+            log._run_unit("1", [])
+        job = self.env["queue.job"].create(
+            {
+                "uuid": "test-requeued-last-unit",
+                "model_name": "data.import.log",
+                "method_name": "_run_unit",
+                "records": log,
+                "args": (),
+                "kwargs": {"unit_key": "2", "rows": []},
+                "state": "started",
+                "exc_info": "Traceback: boom",
+            }
+        )
+        job.write({"state": "failed"})
+        self.assertEqual(log.state, "partial")
+        self.assertTrue(log._rejected_file())
+        job.write({"state": "pending"})
+        with patch(f"{MODEL}._import_unit", return_value=[]):
+            log.with_context(job_uuid=job.uuid)._run_unit("2", [])
+        self.assertEqual(log.state, "done")
+        self.assertEqual(log.unit_settled, 2)
+        self.assertEqual(log.unit_failed, 0)
+        self.assertIsNone(log._rejected_file())
+
+    def test_requeued_job_rejected_again_keeps_one_failure(self):
+        log = self._create_log()
+        log._start_processing(2)
+        job = self.env["queue.job"].create(
+            {
+                "uuid": "test-requeued-rejected-unit",
+                "model_name": "data.import.log",
+                "method_name": "_run_unit",
+                "records": log,
+                "args": (),
+                "kwargs": {"unit_key": "D-001", "rows": []},
+                "state": "started",
+                "exc_info": "Traceback: boom",
+            }
+        )
+        job.write({"state": "failed"})
+        job.write({"state": "pending"})
+        errors = [{"reference": "D-001", "error_message": "no matching order"}]
+        with patch(f"{MODEL}._import_unit", return_value=errors):
+            log.with_context(job_uuid=job.uuid)._run_unit("D-001", [])
+        self.assertEqual(log.unit_failed, 1)
+        self.assertEqual(log.error_ids.error_message, "no matching order")
 
     @mute_logger("odoo.addons.data_import_log.models.data_import_log")
     def test_unreadable_excel_file_is_closed(self):

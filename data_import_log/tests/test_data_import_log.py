@@ -1,7 +1,8 @@
 # Copyright 2026 Quartile (https://www.quartile.co)
 # License LGPL-3.0 or later (https://www.gnu.org/licenses/lgpl).
 
-from odoo.exceptions import UserError
+from odoo.exceptions import AccessError, UserError
+from odoo.tests import new_test_user
 
 from .common import DataImportCase
 
@@ -27,6 +28,23 @@ class TestDataImportLog(DataImportCase):
         self.env.flush_all()
         self.assertEqual(first.content_hash, second.content_hash)
         self.assertEqual(second.state, "pending")
+
+    def test_only_the_import_group_reads_logs(self):
+        log = self._create_log()
+        self.env["data.import.error"].create(
+            {"log_id": log.id, "error_message": "no matching order"}
+        )
+        outsider = new_test_user(self.env, login="import_outsider")
+        with self.assertRaises(AccessError):
+            log.with_user(outsider).read(["file_data"])
+        with self.assertRaises(AccessError):
+            log.error_ids.with_user(outsider).read(["error_message"])
+        reader = new_test_user(
+            self.env,
+            login="import_reader",
+            groups="base.group_user,data_import_log.group_data_import_log",
+        )
+        self.assertTrue(log.with_user(reader).read(["file_data"])[0]["file_data"])
 
     def test_start_processing_sets_units(self):
         log = self._create_log()

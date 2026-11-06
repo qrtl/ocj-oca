@@ -80,19 +80,22 @@ Create the log with the file attached and the hash of its content:
        "encoding": "cp932",
    })
 
-The hash is unique together with the file name, so a file offered twice
-by a feed is refused rather than imported again.
+The same content may be logged more than once, as a sender may resend a
+file to correct some of its units. Recognizing a unit that was already
+imported is up to the module implementing the import; the hash is there
+to help it.
 
-Read the rows, in the same way whichever format the file is in, split
-them into units, and schedule them:
+Schedule the parsing of the file:
 
 ::
 
-   fieldnames, rows = log._read_rows()
-   units = group_rows_somehow(rows)
-   log._start_processing(len(units))
-   for key, unit_rows in units.items():
-       log._enqueue_unit(key, unit_rows)
+   log._enqueue_parse()
+
+The file is read in the same way whichever format it is in, split into
+units by ``_group_rows``, and one job is scheduled per unit. Every row
+is a unit by default; override ``_group_rows`` to return ``{key: rows}``
+when rows have to be imported together. The rejected units are written
+back from the same grouping, so do not split the file elsewhere.
 
 Implement ``_import_unit`` on ``data.import.log``. It is called once per
 unit, in its own job and its own transaction:
@@ -112,6 +115,10 @@ Two hooks are called when the file is closed:
    module that knows where the file is stored;
 -  ``_notify_outcome``, called when the import did not fully succeed,
    which posts a summary on the log by default.
+
+Logs and their files are visible to the members of the Data Import Log
+group and to administrators; add the users who follow the imports to
+that group.
 
 Bug Tracker
 ===========

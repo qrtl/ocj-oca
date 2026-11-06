@@ -359,18 +359,42 @@ class DataImportLog(models.Model):
             job.sudo().data_import_settled = True
         return self._settle_unit(failed=failed)
 
+    def _create_unit_errors(self, unit_key, errors):
+        self.env["data.import.error"].create(
+            [dict({"unit_key": unit_key}, **error, log_id=self.id) for error in errors]
+        )
+
+    def _resettle_unit(self, unit_key, errors):
+        self.ensure_one()
+        previous = self.error_ids.filtered(lambda error: error.unit_key == unit_key)
+        delta = int(bool(errors)) - int(bool(previous))
+        previous.unlink()
+        self._create_unit_errors(unit_key, errors)
+        if not delta:
+            return
+        self.flush_recordset(["unit_failed"])
+        self.env.cr.execute(
+            """
+            UPDATE data_import_log
+               SET unit_failed = COALESCE(unit_failed, 0) + %s
+             WHERE id = %s
+            """,
+            (delta, self.id),
+        )
+        self.invalidate_recordset(["unit_failed"])
+        if self.state in ("done", "partial", "error"):
+            self.state = self._outcome_state()
+
     def _run_unit(self, unit_key, rows):
         """Import one unit and account for it, whatever its outcome."""
         self.ensure_one()
         errors = self._import_unit(unit_key, rows)
-        if errors:
-            self.env["data.import.error"].create(
-                [
-                    dict({"unit_key": unit_key}, **error, log_id=self.id)
-                    for error in errors
-                ]
-            )
-        if self._settle_unit_once(self._current_job(), failed=bool(errors)):
+        job = self._current_job()
+        if job and job.data_import_settled:
+            self._resettle_unit(unit_key, errors)
+            return
+        self._create_unit_errors(unit_key, errors)
+        if self._settle_unit_once(job, failed=bool(errors)):
             self._enqueue_finalizer()
 
     def _settle_failed_unit(self, job, unit_key, reason):
@@ -420,6 +444,17 @@ class DataImportLog(models.Model):
             )
         self.message_post(body=body, subtype_xmlid="mail.mt_comment")
 
+    def _outcome_state(self):
+        if self.file_error:
+            return "error"
+        if not self.unit_total:
+            return "done"
+        if self.unit_failed >= self.unit_total:
+            return "error"
+        if self.unit_failed:
+            return "partial"
+        return "done"
+
     def _finalize(self):
         """Close the log once every unit has settled.
 
@@ -428,16 +463,7 @@ class DataImportLog(models.Model):
         self.ensure_one()
         if self.state != "processing":
             return
-        if self.file_error:
-            state = "error"
-        elif not self.unit_total:
-            state = "done"
-        elif self.unit_failed >= self.unit_total:
-            state = "error"
-        elif self.unit_failed:
-            state = "partial"
-        else:
-            state = "done"
+        state = self._outcome_state()
         self.write({"state": state, "date_done": fields.Datetime.now()})
         self._finalize_file()
         if state != "done":
