@@ -77,6 +77,22 @@ msgid "Current Purchase Amt"
 msgstr "今回取引額"
 
 #. module: l10n_jp_summary_invoice_carryover
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice_carryover.field_account_billing__display_name
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice_carryover.field_res_company__display_name
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice_carryover.field_res_config_settings__display_name
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice_carryover.field_res_partner__display_name
+msgid "Display Name"
+msgstr "表示名"
+
+#. module: l10n_jp_summary_invoice_carryover
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice_carryover.field_account_billing__id
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice_carryover.field_res_company__id
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice_carryover.field_res_config_settings__id
+#: model:ir.model.fields,field_description:l10n_jp_summary_invoice_carryover.field_res_partner__id
+msgid "ID"
+msgstr "ID"
+
+#. module: l10n_jp_summary_invoice_carryover
 #: model:ir.model.fields,help:l10n_jp_summary_invoice_carryover.field_res_company__show_carryover_amounts
 #: model:ir.model.fields,help:l10n_jp_summary_invoice_carryover.field_res_config_settings__show_carryover_amounts
 msgid ""
@@ -93,6 +109,13 @@ msgstr "入金額の手入力値。"
 #: model:ir.model.fields,help:l10n_jp_summary_invoice_carryover.field_account_billing__prev_billed_amount_manual
 msgid "Manual override for previous billed amount."
 msgstr "前回請求額の手入力値。"
+
+#. module: l10n_jp_summary_invoice_carryover
+#: model:ir.model.fields,help:l10n_jp_summary_invoice_carryover.field_account_billing__payment_amount
+msgid ""
+"Net decrease of the receivables billed on the previous billing, i.e. the "
+"previous billed amount less what still stands open of it."
+msgstr "前回請求で請求した売掛金の純減額（前回請求額から、そのうち未消込で残っている額を差し引いた額）。"
 
 #. module: l10n_jp_summary_invoice_carryover
 #: model:ir.model.fields.selection,name:l10n_jp_summary_invoice_carryover.selection__res_partner__show_carryover_amounts__no
@@ -114,11 +137,6 @@ msgstr "入金額(手入力)"
 #: model_terms:ir.ui.view,arch_db:l10n_jp_summary_invoice_carryover.report_summary_invoice_document_carryover
 msgid "Payment Amt"
 msgstr "入金額"
-
-#. module: l10n_jp_summary_invoice_carryover
-#: model:ir.model.fields,help:l10n_jp_summary_invoice_carryover.field_account_billing__payment_amount
-msgid "Payments received on previous billing invoices."
-msgstr "前回請求書に対する入金額。"
 
 #. module: l10n_jp_summary_invoice_carryover
 #: model:ir.model.fields,field_description:l10n_jp_summary_invoice_carryover.field_account_billing__prev_billed_amount

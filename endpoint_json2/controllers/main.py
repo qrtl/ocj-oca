@@ -4,12 +4,13 @@
 from werkzeug.exceptions import NotFound
 
 from odoo import http
+from odoo.fields import Domain
 from odoo.http import request
 
 
 class EndpointJson2DocController(http.Controller):
-    def _get_accessible_endpoints(self, extra_domain=None):
-        domain = [("exec_mode", "=", "json2")] + (extra_domain or [])
+    def _get_accessible_endpoints(self, extra_domain=Domain.TRUE):
+        domain = Domain("exec_mode", "=", "json2") & extra_domain
         all_endpoints = request.env["endpoint.endpoint"].sudo().search(domain)
         user = request.env.user
         return all_endpoints.filtered(
@@ -59,7 +60,9 @@ class EndpointJson2DocController(http.Controller):
         save_session=False,
     )
     def doc_domain(self, route_group):
-        endpoints = self._get_accessible_endpoints([("route_group", "=", route_group)])
+        endpoints = self._get_accessible_endpoints(
+            Domain("route_group", "=", route_group)
+        )
         if not endpoints:
             raise NotFound(f"No endpoints found for domain {route_group!r}")
         return request.make_json_response(

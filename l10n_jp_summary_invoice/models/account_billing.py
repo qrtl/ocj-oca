@@ -22,21 +22,6 @@ class AccountBilling(models.Model):
         compute="_compute_tax_totals",
         exportable=False,
     )
-    amount_untaxed = fields.Monetary(
-        string="Untaxed Amount",
-        compute="_compute_amounts",
-        store=True,
-    )
-    amount_tax = fields.Monetary(
-        string="Tax Amount",
-        compute="_compute_amounts",
-        store=True,
-    )
-    amount_total = fields.Monetary(
-        string="Total Amount",
-        compute="_compute_amounts",
-        store=True,
-    )
     tax_adjustment_entry_id = fields.Many2one("account.move")
     company_partner_id = fields.Many2one(
         related="company_id.partner_id", string="Company Partner", store=True
@@ -138,12 +123,14 @@ class AccountBilling(models.Model):
             bill.tax_totals = dummy_move.tax_totals
 
     @api.depends("billing_line_ids", "partner_id", "currency_id")
-    def _compute_amounts(self):
+    def _compute_amount(self):
+        super()._compute_amount()
         for bill in self:
             tax_totals = bill.tax_totals or {}
             bill.amount_untaxed = tax_totals.get("base_amount_currency", 0.0)
             bill.amount_total = tax_totals.get("total_amount_currency", 0.0)
             bill.amount_tax = bill.amount_total - bill.amount_untaxed
+        return
 
     def _update_remit_to_bank_id(self):
         for rec in self:
