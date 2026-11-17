@@ -2,5 +2,6 @@
 PyYAML
 jaconv
 jsonschema
+openpyxl
 openupgradelib
 requests
