@@ -66,11 +66,9 @@ class StockMove(models.Model):
         )
 
     def _action_synch_order(self):
-        # Moves from the vendor only, as in purchase_stock: a return must stay
-        # possible on a line that is already over received.
         receipts = self.filtered(
             lambda move: move.picking_id.purchase_id
-            and move.location_id.usage in ("supplier", "transit")
+            and move._should_count_for_quantity_received()
         )
         # Checked before super(), which adds an order line for such a product:
         # a user without purchase rights would get an access error instead.
