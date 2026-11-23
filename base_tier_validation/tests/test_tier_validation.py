@@ -5,14 +5,17 @@
 import json
 from unittest import mock
 
+from freezegun import freeze_time
 from lxml import etree
 
-from odoo import Command
+from odoo import Command, fields
 from odoo.exceptions import AccessError, ValidationError
 from odoo.fields import Domain
 from odoo.tests import Form
 from odoo.tests.common import tagged
+from odoo.tools import mute_logger
 
+from ..models.res_users import Users as BaseUsers
 from ..models.tier_validation import BASE_EXCEPTION_FIELDS as BEF
 from ..models.tier_validation import TierValidation as TV
 from .common import CommonTierValidation
@@ -243,6 +246,181 @@ class TierTierValidation(CommonTierValidation):
             sorted(json.loads(n.channel)[-1] for n in notifications),
             sorted((self.test_user_1 | self.test_user_2).partner_id.ids),
         )
+
+    def test_systray_counter_late_pending_future_buckets(self):
+        """``review_user_count`` splits the user's reviews into three
+        buckets so the systray can mirror Odoo's activity menu:
+
+        - ``late_count`` -- pending reviews older than the configured
+          ``base_tier_validation.late_after_days`` threshold;
+        - ``pending_count`` -- pending reviews within the threshold;
+        - ``future_count`` -- waiting reviews (sequence-queued).
+
+        Also returns the matching record id lists so the systray click
+        opens exactly those records.
+        """
+        # Two sequenced definitions for the same model: tier 1 = user 1,
+        # tier 2 = user 1 again. Once tier 1 is pending, tier 2 stays in
+        # "waiting". A third tier for user 2 (highest sequence, so it comes
+        # first) applies to records above 5.0, so user 1 only has waiting
+        # reviews there: the future bucket.
+        for sequence in (10, 20):
+            self.tier_def_obj.create(
+                {
+                    "model_id": self.tester_model.id,
+                    "review_type": "individual",
+                    "reviewer_id": self.test_user_1.id,
+                    "definition_domain": "[('test_field', '>', 1.0)]",
+                    "sequence": sequence,
+                    "approve_sequence": True,
+                }
+            )
+        self.tier_def_obj.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_2.id,
+                "definition_domain": "[('test_field', '>', 5.0)]",
+                "sequence": 30,
+                "approve_sequence": True,
+            }
+        )
+        record = self.test_model.create({"test_field": 2.5})
+        record.with_user(self.test_user_2).request_validation()
+        future_record = self.test_model.create({"test_field": 7.0})
+        future_record.with_user(self.test_user_2).request_validation()
+        # The user has 1 pending and 1 waiting review on ``record``, which
+        # counts as one pending document and is left out of Future.
+        docs = self.test_user_1.with_user(self.test_user_1).review_user_count()
+        tester_doc = next(d for d in docs if d["model"] == "tier.validation.tester")
+        self.assertEqual(tester_doc["late_count"], 0)
+        self.assertEqual(tester_doc["pending_count"], 1)
+        self.assertEqual(tester_doc["future_count"], 1)
+        self.assertEqual(tester_doc["pending_ids"], [record.id])
+        self.assertEqual(tester_doc["future_ids"], [future_record.id])
+        # Push "now" past the late threshold (default 7 days) -- the
+        # still-pending review moves from `pending_count` into
+        # `late_count`. The waiting (future) review is unaffected.
+        later = fields.Datetime.add(fields.Datetime.now(), days=14)
+        with freeze_time(later):
+            docs = self.test_user_1.with_user(self.test_user_1).review_user_count()
+        tester_doc = next(d for d in docs if d["model"] == "tier.validation.tester")
+        self.assertEqual(tester_doc["late_count"], 1)
+        self.assertEqual(tester_doc["pending_count"], 0)
+        self.assertEqual(tester_doc["future_count"], 1)
+        self.assertEqual(tester_doc["late_ids"], [record.id])
+        self.assertEqual(tester_doc["future_ids"], [future_record.id])
+
+    def test_systray_counter_late_counts_from_pending(self):
+        """With Approve by sequence, a later tier is late only once it has
+        been pending for longer than the threshold, not from the request."""
+        first = self.tier_def_obj.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_2.id,
+                "definition_domain": "[('test_field', '>', 1.0)]",
+                "sequence": 20,
+                "approve_sequence": True,
+            }
+        )
+        self.tier_def_obj.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_1.id,
+                "definition_domain": "[('test_field', '>', 1.0)]",
+                "sequence": 10,
+                "approve_sequence": True,
+            }
+        )
+        record = self.test_model.create({"test_field": 2.5})
+        record.with_user(self.test_user_2).request_validation()
+        review_1 = record.review_ids.filtered(lambda r: r.definition_id == first)
+        review_2 = record.review_ids - review_1
+        self.assertEqual(review_1.status, "pending")
+        self.assertTrue(review_1.pending_date)
+        self.assertEqual(review_2.status, "waiting")
+        self.assertFalse(review_2.pending_date)
+        # The first tier takes 10 days: the second one only starts then.
+        validated_at = fields.Datetime.add(fields.Datetime.now(), days=10)
+        with freeze_time(validated_at):
+            record.with_user(self.test_user_2).validate_tier()
+            docs = self.test_user_1.with_user(self.test_user_1).review_user_count()
+        self.assertEqual(review_2.status, "pending")
+        self.assertEqual(review_2.pending_date, validated_at)
+        tester_doc = next(d for d in docs if d["model"] == "tier.validation.tester")
+        self.assertEqual(
+            (tester_doc["late_count"], tester_doc["pending_count"]), (0, 1)
+        )
+        # Eight days after it became pending, it is late.
+        with freeze_time(fields.Datetime.add(validated_at, days=8)):
+            docs = self.test_user_1.with_user(self.test_user_1).review_user_count()
+        tester_doc = next(d for d in docs if d["model"] == "tier.validation.tester")
+        self.assertEqual(
+            (tester_doc["late_count"], tester_doc["pending_count"]), (1, 0)
+        )
+
+    def test_systray_counter_invalid_late_after_days(self):
+        """An invalid ``late_after_days`` falls back to the default instead
+        of breaking the systray, a negative one counts as 0."""
+        self.tier_def_obj.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_1.id,
+                "definition_domain": "[('test_field', '>', 1.0)]",
+            }
+        )
+        record = self.test_model.create({"test_field": 2.5})
+        record.with_user(self.test_user_2).request_validation()
+        param = self.env["ir.config_parameter"].sudo()
+        later = fields.Datetime.add(fields.Datetime.now(), days=3)
+        expected = {"abc": (0, 1), "7.5": (0, 1), "": (0, 1), "-1": (1, 0)}
+        for value, (late_count, pending_count) in expected.items():
+            param.set_param("base_tier_validation.late_after_days", value)
+            with freeze_time(later):
+                docs = self.test_user_1.with_user(self.test_user_1).review_user_count()
+            tester_doc = next(d for d in docs if d["model"] == "tier.validation.tester")
+            self.assertEqual(
+                (tester_doc["late_count"], tester_doc["pending_count"]),
+                (late_count, pending_count),
+                value,
+            )
+
+    def test_systray_counter_skips_when_no_acl(self):
+        """When the reviewer has no read access on the validated model,
+        ``review_user_count`` swallows the AccessError and drops the
+        model from the systray rather than crashing the dropdown."""
+        self.tier_def_obj.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_2.id,
+                "definition_domain": "[('test_field', '>', 1.0)]",
+            }
+        )
+        record = self.test_model.create({"test_field": 2.5})
+        record.with_user(self.test_user_1).request_validation()
+        # Restrict the model's ACL to admins; test_user_2 keeps the
+        # tier review but loses read access on the validated record.
+        self.env["ir.model.access"].search(
+            Domain("model_id", "=", self.tester_model.id)
+        ).write({"group_id": self.env.ref("base.group_system").id})
+        self.env["ir.model.access"].call_cache_clearing_methods()
+        # The endpoint must not raise and must drop the inaccessible
+        # model from its output.
+        docs = self.test_user_2.with_user(self.test_user_2).review_user_count()
+        self.assertNotIn("tier.validation.tester", [d["model"] for d in docs])
+
+    def test_tier_review_dashboard_action_stub(self):
+        """The base module exposes ``tier_review_dashboard_action`` as an
+        optional hook for downstream dashboard modules. Without an
+        override it returns ``False`` so the systray omits its
+        "Show all reviews" footer link."""
+        # Call the base implementation itself: a dashboard module installed in
+        # the same database (e.g. base_tier_validation_board) overrides it.
+        self.assertFalse(BaseUsers.tier_review_dashboard_action(self.env["res.users"]))
 
     def test_11_add_comment(self):
         # Create new test record
@@ -605,6 +783,47 @@ class TierTierValidation(CommonTierValidation):
             4, len(record1.review_ids.filtered(lambda x: x.status == "approved"))
         )
         self.assertEqual(record1.validation_status, "validated")
+
+    def _validate_with_comment(self, defs_vals):
+        for vals in defs_vals:
+            self.tier_def_obj.create(
+                dict(
+                    vals,
+                    model_id=self.tester_model.id,
+                    review_type="individual",
+                    reviewer_id=self.test_user_1.id,
+                    definition_domain="[('test_field', '>', 1.0)]",
+                    has_comment=True,
+                )
+            )
+        test_record = self.test_model.create({"test_field": 2.5})
+        test_record.with_user(self.test_user_2).request_validation()
+        record = test_record.with_user(self.test_user_1)
+        action = record.validate_tier()
+        self.env[action["res_model"]].with_user(self.test_user_1).with_context(
+            **action["context"]
+        ).create({"comment": "Looks good"}).add_comment()
+        return test_record
+
+    def test_12_approve_sequence_bypass_comment_once(self):
+        """One approval covering several tiers by bypass comments only the
+        last of them."""
+        bypass = {"approve_sequence": True, "approve_sequence_bypass": True}
+        test_record = self._validate_with_comment(
+            [dict(bypass, sequence=40), dict(bypass, sequence=30)]
+        )
+        reviews = test_record.review_ids
+        self.assertEqual(reviews.mapped("status"), ["approved", "approved"])
+        self.assertEqual(
+            reviews.sorted("sequence").mapped("comment"), [False, "Looks good"]
+        )
+
+    def test_12_validate_several_reviews_comment_all(self):
+        """Without bypass, every review validated at once gets the comment."""
+        test_record = self._validate_with_comment([{"sequence": 40}, {"sequence": 30}])
+        reviews = test_record.review_ids
+        self.assertEqual(reviews.mapped("status"), ["approved", "approved"])
+        self.assertEqual(reviews.mapped("comment"), ["Looks good", "Looks good"])
 
     def test_13_onchange_review_type(self):
         tier_def_id = self.tier_def_obj.create(
@@ -2176,3 +2395,154 @@ class TierTierValidationView(CommonTierValidation):
         self.assertIn("validation_status", res["models"][self.test_model_2._name])
         self.assertIn('name="validation_status"', arch)
         self.assertIn("validation_status not in", arch)
+
+    @mute_logger(
+        "odoo.addons.base_tier_validation.models.tier_validation",
+        "odoo.addons.base.models.ir_model",
+    )
+    def test_request_validation_warns_reviewer_without_access(self):
+        """When request_validation creates reviews for a reviewer who has
+        no read access on the validated model, a chatter message is posted
+        on the document so the requester can see why the workflow won't
+        progress."""
+        test_record = self.test_model.create({"test_field": 2.5})
+        self.tier_def_obj.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_2.id,
+                "definition_domain": "[('test_field', '>', 1.0)]",
+            }
+        )
+        # Restrict the tester model's read access to base.group_system so
+        # the requester (test_user_1, in group_system) keeps access while
+        # the reviewer (test_user_2, only base.group_user) loses it. This
+        # is the "assigned reviewer but no ACL" state the chatter warning
+        # exists to surface.
+        self.env["ir.model.access"].search(
+            Domain("model_id", "=", self.tester_model.id)
+        ).write({"group_id": self.env.ref("base.group_system").id})
+        # Ensure the ACL cache picks up the change before the helper checks.
+        self.env["ir.model.access"].call_cache_clearing_methods()
+        messages_before = len(test_record.message_ids)
+        test_record.with_user(self.test_user_1).request_validation()
+        messages_after = test_record.message_ids
+        self.assertGreater(len(messages_after), messages_before)
+        # The newest message should name the user without access.
+        body = messages_after[0].body
+        self.assertIn(self.test_user_2.display_name, body)
+        self.assertIn("may not be able to read", body)
+
+    @mute_logger("odoo.addons.base_tier_validation.models.tier_validation")
+    def test_request_validation_warns_reviewer_hidden_by_record_rule(self):
+        """The reviewer can read the model, but a record rule hides this
+        document from them: the warning still names them."""
+        test_record = self.test_model.create({"test_field": 2.5})
+        self.tier_def_obj.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_2.id,
+                "definition_domain": "[('test_field', '>', 1.0)]",
+            }
+        )
+        self.env["ir.rule"].create(
+            {
+                "name": "Reviewer only sees small tests",
+                "model_id": self.tester_model.id,
+                "groups": [Command.link(self.env.ref("base.group_user").id)],
+                "domain_force": "[('test_field', '<', 1.0)]",
+            }
+        )
+        self.env["ir.rule"].create(
+            {
+                "name": "Admins see all tests",
+                "model_id": self.tester_model.id,
+                "groups": [Command.link(self.env.ref("base.group_system").id)],
+                "domain_force": "[(1, '=', 1)]",
+            }
+        )
+        self.assertTrue(self.test_model.with_user(self.test_user_2).has_access("read"))
+        messages_before = test_record.message_ids
+        test_record.with_user(self.test_user_1).request_validation()
+        new_messages = test_record.message_ids - messages_before
+        bodies = " ".join(message.body or "" for message in new_messages)
+        self.assertIn("may not be able to read", bodies)
+        self.assertIn(self.test_user_2.display_name, bodies)
+
+    def test_request_validation_no_warning_when_reviewer_has_access(self):
+        """No spurious chatter message when reviewers have model access."""
+        test_record = self.test_model.create({"test_field": 2.5})
+        self.tier_def_obj.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_1.id,
+                "definition_domain": "[('test_field', '>', 1.0)]",
+            }
+        )
+        # Default public ACL is in place; test_user_1 can read the model.
+        messages_before = test_record.message_ids
+        test_record.with_user(self.test_user_2).request_validation()
+        new_messages = test_record.message_ids - messages_before
+        bodies = " ".join(message.body or "" for message in new_messages)
+        self.assertNotIn("may not be able to read", bodies)
+
+    def test_warn_reviewers_lacking_access_short_circuits(self):
+        """Direct exercise of the helper's defensive branches: no
+        reviewers and no access-issue early exits, without going through
+        the full ``request_validation`` flow."""
+        # No reviews -> empty for-loop, no chatter.
+        self.test_record._warn_reviewers_lacking_access(self.env["tier.review"])
+        # Real reviews but reviewer has access -> `if not no_access`
+        # exit, again no chatter.
+        self.tier_def_obj.create(
+            {
+                "model_id": self.tester_model.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_1.id,
+                "definition_domain": "[('test_field', '>', 1.0)]",
+            }
+        )
+        record = self.test_model.create({"test_field": 2.5})
+        reviews = record.with_user(self.test_user_2).request_validation()
+        messages_before = record.message_ids
+        record._warn_reviewers_lacking_access(reviews)
+        new_messages = record.message_ids - messages_before
+        bodies = " ".join(msg.body or "" for msg in new_messages)
+        self.assertNotIn("may not be able to read", bodies)
+
+    @mute_logger(
+        "odoo.addons.base_tier_validation.models.tier_validation",
+        "odoo.addons.base.models.ir_model",
+    )
+    def test_request_validation_warning_without_mail_thread(self):
+        """Models without mail.thread can't accept ``message_post``. The
+        warning helper must still log the issue but skip the chatter
+        post without raising. Covers the ``hasattr(rec, "message_post")``
+        False branch."""
+        self.tier_def_obj.create(
+            {
+                "model_id": self.tester_model_2.id,
+                "review_type": "individual",
+                "reviewer_id": self.test_user_2.id,
+                "definition_domain": "[('test_field', '>', 1.0)]",
+            }
+        )
+        # Restrict the model's ACL so the reviewer (user_2) loses read
+        # access and triggers the warning branch.
+        self.env["ir.model.access"].search(
+            Domain("model_id", "=", self.tester_model_2.id)
+        ).write({"group_id": self.env.ref("base.group_system").id})
+        self.env["ir.model.access"].call_cache_clearing_methods()
+        # Create a fresh record whose field actually matches the
+        # tier-definition domain (the shared fixture's test_field is 1.0
+        # which does not trigger the > 1.0 rule).
+        record = self.test_model_2.create({"test_field": 2.5})
+        # `tier.validation.tester2` does not inherit ``mail.thread``;
+        # the helper must not crash trying to post a chatter message
+        # on it.
+        reviews = record.with_user(self.test_user_1).request_validation()
+        self.assertTrue(reviews)
+        # Sanity: no chatter on a non-mail.thread model.
+        self.assertFalse(hasattr(record, "message_ids"))

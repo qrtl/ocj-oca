@@ -69,6 +69,35 @@ class TierReview(models.Model):
         related="definition_id.approve_sequence_bypass"
     )
     last_reminder_date = fields.Datetime(readonly=True)
+    pending_date = fields.Datetime(
+        string="Pending Since",
+        readonly=True,
+        copy=False,
+        help="When the review became pending, i.e. when its reviewers could "
+        "act on it. With Approve by sequence that is when the previous tier "
+        "was validated, not when the validation was requested.",
+    )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        now = fields.Datetime.now()
+        for vals in vals_list:
+            if vals.get("status") == "pending" and not vals.get("pending_date"):
+                vals["pending_date"] = now
+        return super().create(vals_list)
+
+    def write(self, vals):
+        if vals.get("status") == "pending" and "pending_date" not in vals:
+            # Stamp only the reviews that become pending now: a review
+            # written pending again keeps the date it first became so.
+            becoming = self.filtered(lambda r: r.status != "pending")
+            res = super(TierReview, self - becoming).write(vals)
+            if becoming:
+                res = super(TierReview, becoming).write(
+                    dict(vals, pending_date=fields.Datetime.now())
+                )
+            return res
+        return super().write(vals)
 
     @api.depends("status")
     def _compute_display_status(self):
@@ -295,7 +324,17 @@ class TierReview(models.Model):
             rev.last_reminder_date = fields.Datetime.now()
 
     def _notify_review_reminder(self, record):
-        record.message_post(
+        """Remind the reviewers of this review, and nobody else.
+
+        ``message_post`` without recipients would notify the followers of the
+        reminder subtype instead: on a record that has been through earlier
+        reminders those are not necessarily the reviewers whose turn it is
+        (a later tier that was reminded under an older version, a requester
+        who follows everything), while the pending reviewers, subscribed to
+        the *requested* subtype only, would get nothing.
+        """
+        record.message_notify(
+            partner_ids=self.reviewer_ids.partner_id.ids,
             subtype_xmlid=self._get_reminder_notification_subtype(),
             body=self._notify_review_reminder_body(),
         )
