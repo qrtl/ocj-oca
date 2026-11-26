@@ -38,3 +38,11 @@ msgstr ""
 #: model:ir.model,name:stock_production_lot_active.model_stock_lot
 msgid "Lot/Serial"
 msgstr ""
+
+#. module: stock_production_lot_active
+#. odoo-python
+#: code:addons/stock_production_lot_active/models/stock_production_lot.py:0
+msgid ""
+"You cannot archive a lot that still has stock on hand. Move it out first:\n"
+"%(lines)s"
+msgstr ""
