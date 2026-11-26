@@ -21,16 +21,22 @@ class StockLot(models.Model):
 
     @api.constrains("active")
     def _check_archived_without_stock(self):
-        if self.env.context.get("do_not_check_quant"):
+        archived = self.filtered(lambda lot: not lot.active)
+        if not archived or self.env.context.get("do_not_check_quant"):
             return
-        quants = self.env["stock.quant"].search(
-            [
-                ("lot_id", "in", self.filtered(lambda lot: not lot.active).ids),
-                ("location_id.usage", "=", "internal"),
-                "|",
-                ("quantity", "!=", 0),
-                ("reserved_quantity", "!=", 0),
-            ]
+        # sudo: stock the user's companies hide still counts.
+        quants = (
+            self.env["stock.quant"]
+            .sudo()
+            .search(
+                [
+                    ("lot_id", "in", archived.ids),
+                    ("location_id.usage", "in", ("internal", "transit")),
+                    "|",
+                    ("quantity", "!=", 0),
+                    ("reserved_quantity", "!=", 0),
+                ]
+            )
         )
         if quants:
             lines = {
