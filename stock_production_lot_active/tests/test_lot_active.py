@@ -1,6 +1,6 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import ValidationError
 
 from odoo.addons.base.tests.common import BaseCommon
 
@@ -46,13 +46,13 @@ class TestLotActive(BaseCommon):
         lot = self.env["stock.lot"].create(
             {"name": "lot with stock", "product_id": product.id}
         )
-        Quant = self.env["stock.quant"]
+        quant_model = self.env["stock.quant"]
         stock = self.warehouse.lot_stock_id
         customers = self.env.ref("stock.stock_location_customers")
-        Quant._update_available_quantity(product, stock, 1, lot_id=lot)
-        with self.assertRaises(UserError):
+        quant_model._update_available_quantity(product, stock, 1, lot_id=lot)
+        with self.assertRaises(ValidationError):
             lot.action_archive()
-        Quant._update_available_quantity(product, stock, -1, lot_id=lot)
-        Quant._update_available_quantity(product, customers, 1, lot_id=lot)
+        quant_model._update_available_quantity(product, stock, -1, lot_id=lot)
+        quant_model._update_available_quantity(product, customers, 1, lot_id=lot)
         lot.action_archive()
         self.assertFalse(lot.active)

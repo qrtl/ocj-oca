@@ -2,7 +2,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 
 from odoo import api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import ValidationError
 
 
 class StockLot(models.Model):
@@ -19,20 +19,13 @@ class StockLot(models.Model):
         """
         return super(StockLot, self.with_context(active_test=False))._check_unique_lot()
 
-    def write(self, vals):
-        if (
-            "active" in vals
-            and not vals["active"]
-            and not self.env.context.get("do_not_check_quant")
-        ):
-            self._check_no_stock_on_hand()
-        return super().write(vals)
-
-    def _check_no_stock_on_hand(self):
-        """Refuse when any of the lots has quantity in an internal location."""
+    @api.constrains("active")
+    def _check_archived_without_stock(self):
+        if self.env.context.get("do_not_check_quant"):
+            return
         quants = self.env["stock.quant"].search(
             [
-                ("lot_id", "in", self.ids),
+                ("lot_id", "in", self.filtered(lambda lot: not lot.active).ids),
                 ("location_id.usage", "=", "internal"),
                 "|",
                 ("quantity", "!=", 0),
@@ -40,13 +33,14 @@ class StockLot(models.Model):
             ]
         )
         if quants:
-            raise UserError(
+            lines = {
+                f"{quant.lot_id.name}: {quant.location_id.display_name}"
+                for quant in quants
+            }
+            raise ValidationError(
                 self.env._(
                     "You cannot archive a lot that still has stock on hand. "
                     "Move it out first:\n%(lines)s",
-                    lines="\n".join(
-                        f"{quant.lot_id.name}: {quant.location_id.display_name}"
-                        for quant in quants
-                    ),
+                    lines="\n".join(sorted(lines)),
                 )
             )
