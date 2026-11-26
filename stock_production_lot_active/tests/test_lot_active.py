@@ -39,7 +39,7 @@ class TestLotActive(BaseCommon):
             )
 
     def test_archive_waits_until_the_stock_has_left(self):
-        # Only internal locations count: a lot sold to a customer can be archived.
+        # Stock the company no longer holds does not count: sold, it can be archived.
         product = self.env["product.product"].create(
             {"name": "Storable Lot Product", "is_storable": True, "tracking": "lot"}
         )
@@ -52,7 +52,14 @@ class TestLotActive(BaseCommon):
         quant_model._update_available_quantity(product, stock, 1, lot_id=lot)
         with self.assertRaises(ValidationError):
             lot.action_archive()
+        transit = self.env["stock.location"].create(
+            {"name": "Transit Test", "usage": "transit"}
+        )
         quant_model._update_available_quantity(product, stock, -1, lot_id=lot)
+        quant_model._update_available_quantity(product, transit, 1, lot_id=lot)
+        with self.assertRaises(ValidationError):
+            lot.action_archive()
+        quant_model._update_available_quantity(product, transit, -1, lot_id=lot)
         quant_model._update_available_quantity(product, customers, 1, lot_id=lot)
         lot.action_archive()
         self.assertFalse(lot.active)
